@@ -1,0 +1,334 @@
+(* An Imandra proof that sqrt(2) is irrational. 
+   Theorem 1 in the 100 Theorems list. *)
+(* G.Passmore, Imandra *)
+
+[@@@import "mod.iml"]
+[@@@import GCD, "gcd.iml"]
+
+open Mod.Theorems
+open GCD
+
+(* First, let's define a datatype of rationals. *)
+
+module Rational = struct
+
+  type t = { num:int; den:int }
+
+  let norm (r:t) : t =
+    if r.den = 0 || r.den = 1 then r
+    else
+      let d = gcd r.num r.den in
+      let s = if r.den < 0 then -1 else 1 in
+      { num = s * (r.num / d); den = s * (r.den / d) }
+
+  let mk (n:int) (d:int) : t =
+    if d = 0 then { num = 1; den = 0 } 
+    else norm { num = n; den = d }
+
+  let of_int (num:int) =
+    { num; den = 1 }
+
+  let is_reduced (r:t) : bool =
+    r.den > 0 && gcd r.num r.den = 1
+
+  (* Semantic equality of rationals: n1/d1 = n2/d2 <==> n1*d2 = n2*d1 *)
+  let eq (r1:t) (r2:t) : bool =
+    r1.num * r2.den = r2.num * r1.den
+
+  (* Non-normalizing multiplication *)
+  let mul_plain (r1:t) (r2:t) : t =
+    { num = r1.num * r2.num; den = r1.den * r2.den }
+
+  let square_plain (r:t) : t = mul_plain r r
+  
+  let square (r:t) : t = norm (mul_plain r r)
+
+  let two = of_int 2
+
+end
+
+(* Now, let's prove some theorems! *)
+
+let even (x:int) : bool = x mod 2 = 0
+let odd  (x:int) : bool = x mod 2 = 1
+
+theorem mod2_zero_or_one x =
+  (x mod 2 = 0) || (x mod 2 = 1)
+[@@by [%use mod_range x 2] @> auto]
+
+(* Squares preserve parity (over mod 2):  x^2 ≡ 0 (mod 2)  iff  x ≡ 0 (mod 2) *)
+theorem square_even_iff_even x =
+  ((x * x) mod 2 = 0) = (x mod 2 = 0)
+[@@by
+  [%cases x mod 2 = 0]
+  @>| [
+    (* even ⇒ square even *)
+    [%use mod_mul x x 2]
+    @> [%use mod_mul_preserves_zero x x 2]
+    @> auto;
+
+    (* odd ==> square odd *)
+    [%use mod_mul x x 2]         (* x*x mod 2 = ((x mod 2)*(x mod 2)) mod 2 *)
+    @> [%use mod_range x 2]      (* 0 ≤ x mod 2 < 2  ⇒  x mod 2 ∈ {0,1} *)
+    @> [%cases x mod 2 = 1]
+    @>| [
+      (* subcase: x mod 2 = 1 *)
+      [%use mod_one_self 2]      (* 1 mod 2 = 1 *)
+      @> [%replace x mod 2]
+      @> auto;
+
+      (* subcase: x mod 2 <> 1 *)
+      auto                       (* contradicts mod_range + H0: can’t be 0 or 1 *)
+    ]
+  ]
+]
+
+theorem p_even_from_eq p q =
+  (p*p = 2 * (q*q)) ==> p mod 2 = 0
+[@@by
+  [%use mod_mul q q 2]          (* q^2 mod 2 = (q mod 2)^2 mod 2 *)
+  @> [%use square_even_iff_even p]
+  @> auto
+]
+
+theorem even_lt4_eq2 r =
+  (0 <= r && r < 4 && r mod 2 = 0 && r <> 0) ==> r = 2
+[@@by auto]
+
+(* squares mod 4: we only need these two tiny facts *)
+theorem square_mod4_even x =
+  x mod 2 = 0 ==> (x*x) mod 4 = 0
+[@@by
+  intros
+  @> [%use mod_mul x x 4]          (* x*x mod 4 = ((x mod 4)*(x mod 4)) mod 4 *)
+  @> [%use mod_range x 4]          (* 0 ≤ r < 4 where r = x mod 4 *)
+  @> [%use mod_mod x 4 2]          (* (x mod 4) mod 2 = x mod 2 = 0 *)
+  @> [%cases x mod 4 = 0]
+  @>| [
+    (* r = 0 ==> (0*0) mod 4 = 0 *)
+    [%replace x mod 4]
+    @> auto;
+
+    (* otherwise r ≠ 0, but r < 4 and r mod 2 = 0 ⇒ r = 2 *)
+    [%use mod_mul_right_zero 2 2]           (* 4 mod 2 = 0 *)
+     @> [%use mod_range x 4]                (* 0 ≤ x mod 4 < 4 *)
+     @> [%use even_lt4_eq2 (x mod 4)]       (* from even & <>0 & <4, conclude x mod 4 = 2 *)
+     @> lift_ifs
+     @>| [[%replace x mod 2] @> exact; 
+          [%use mod_mul x x 4]
+          @> [%replace x mod 4]
+          @> auto]
+  ]]
+
+(* Odd residue in [0,4) is 1 or 3 *)
+theorem odd_lt4_is_1_or_3 r =
+  (0 <= r && r < 4 && r mod 2 = 1) ==> (r = 1 || r = 3)
+[@@by auto]
+
+(* Constant: 9 ≡ 1 (mod 4).
+   For fun, we can prove this without direct computation :-). *)
+theorem three_sq_mod4 =
+  (3 * 3) mod 4 = 1
+[@@by
+  [%use mod_add (2 * 4) 1 4]       (* (8 + 1) mod 4 = ((8 mod 4) + (1 mod 4)) mod 4 *)
+  @> [%use mod_mul_right_zero 2 4] (* 8 mod 4 = 0 *)
+  @> [%use mod_one_self 4]         (* 1 mod 4 = 1 *)
+  @> auto                          (* (0 + 1) mod 4 = 1 *)
+]
+
+(* We of course can also prove it by direct computation!
+   e.g.,
+
+   verify ((3 * 3) mod 4 = 1).
+
+   But it's fun and instructive to use the axioms as in the 'manual'
+   proof of `three_sq_mod4` above.
+*)
+
+theorem square_mod4_odd x =
+  x mod 2 = 1 ==> (x*x) mod 4 = 1
+[@@by
+  intros
+  @> [%use mod_mul x x 4]                (* x*x mod 4 = ((x mod 4)*(x mod 4)) mod 4 *)
+  @> [%use mod_mod x 4 2]                (* (x mod 4) mod 2 = x mod 2 = 1 *)
+  @> [%use mod_range x 4]                (* 0 ≤ x mod 4 < 4 *)
+  @> [%use odd_lt4_is_1_or_3 (x mod 4)]  (* so x mod 4 = 1 or 3 *)
+  @> [%cases x mod 4 = 1]
+  @>| [
+    (* Left branch: x mod 4 = 1 *)
+    [%replace x mod 4] @> [%use mod_one_self 4] @> auto;
+
+    (* Right branch: (x mod 4 <> 1). 
+       From the disjunction, deduce x mod 4 = 3, then compute. *)
+
+    [%use three_sq_mod4]
+    @> lift_ifs
+    @>| [[%replace x mod 2] @> exact; 
+    
+          [%use mod_mul x x 4]      (* x*x mod 4 = ((x mod 4)*(x mod 4)) mod 4 *)
+          @> [%replace x mod 4]     (* use H2: rewrite both occurrences to 3 *)
+          @> auto                   (* (3*3) mod 4 = 1 ==> C0 *)]  
+  ]
+]
+
+theorem q_even_from_eq p q =
+  (p*p = 2*(q*q) && p mod 2 = 0) ==> q mod 2 = 0
+[@@by
+  (* take both sides mod 4 *)
+  [%use square_mod4_even p]     (* p^2 ≡ 0 (mod 4) *)
+  @> [%cases q mod 2 = 1]
+  @>| [
+    [%use square_mod4_odd q]    (* q odd ==> q^2 ≡ 1 ⇒ RHS ≡ 2 (mod 4), contradiction *)
+    @> auto;
+    auto
+  ]
+]
+
+theorem p_even_from_eq p q =
+  (p*p = 2*(q*q)) ==> p mod 2 = 0
+[@@by
+  (* RHS has a factor 2 ⇒ RHS mod 2 = 0 *)
+  [%use mod_mul_right_zero (q*q) 2]
+  @> [%use square_even_iff_even p]     (* (p*p) mod 2 = 0 ⇒ p mod 2 = 0 *)
+  @> auto
+]
+
+theorem mod_zero_abs d x =
+  (d > 0 && x mod d = 0) ==> (abs x) mod d = 0
+[@@by
+  intros
+  @> [%use mod_mul_preserves_zero (-1) x d]
+  @> auto
+]
+
+theorem gcd_sub_step_b_gt_a p q =
+  (p >= 0 && q > 0 && p < q) ==> (GCD.gcd p q) = (GCD.gcd p (q - p))
+[@@by
+  auto
+]
+
+theorem mod_sub_left_zero d p q =
+  d <> 0 && p mod d = 0 && q mod d = 0 ==> (p - q) mod d = 0
+[@@by
+  intros
+  @> [%use mod_mul_preserves_zero (-1) q d]
+  @> [%use mod_add p (-q) d]
+  @> auto
+]
+
+theorem gcd_sub_step_a_ge_b p q =
+  (p >= 0 && q > 0 && p >= q) ==> (GCD.gcd p q) = (GCD.gcd (p - q) q)
+[@@by
+  auto
+]
+
+
+theorem gcd_absorbs_common_divisor d p q =
+  (d > 0 && p mod d = 0 && q mod d = 0) ==> (gcd p q) mod d = 0
+[@@by
+  induction ()
+  @>| [
+    [%use mod_zero_abs d p] @> auto;
+
+      (* step: b <> 0, gcd p q = gcd b (a mod b), where a=abs p, b=abs q *)
+      (* First: show b ≡ 0 (mod d) and a ≡ 0 (mod d) *)
+      [%use mod_zero_abs d q]            (* gives (abs q) mod d = 0 *)
+       @> [%use mod_zero_abs d p]        (* gives (abs p) mod d = 0 *)
+      (* Next: from b ≡ 0 (mod d) get (a mod b) ≡ a (mod d) and thus ≡ 0 *)
+       @> [%use mod_mod (abs p) (abs q) d]
+      (* Now apply the IH on (b, a mod b) with d>0 and both ≡ 0 (mod d) *)
+       @> [%use mod_sub_right_zero d q p]
+       @> [%use gcd_sub_step_b_gt_a p q]
+       @> auto
+
+       ; 
+       [%use mod_sub_left_zero d p q]         (* from p≡0 and q≡0 ⇒ (p-q)≡0 (mod d) *)
+       @> [%use gcd_sub_step_a_ge_b p q]         (* gcd p q = gcd (p-q) q when p≥q>0 *)
+       @> auto
+  ]
+]
+
+theorem no_coprime_solution_p2_eq_2q2 p q =
+  (gcd p q = 1 && p*p = 2*(q*q)) ==> false
+[@@by
+  [%use p_even_from_eq p q]                 (* from p^2 = 2 q^2 ⇒ p even *)
+  @> [%use q_even_from_eq p q]              (* with p even in context ⇒ q even *)
+  @> [%use gcd_absorbs_common_divisor 2 p q]  (* 2 | p and 2 | q ⇒ gcd p q ≥ 2 *)
+  @> auto                                   (* contradicts gcd p q = 1 *)
+]
+
+let square_int (n:int) : int =
+  n * n
+
+(* The key representation of a purported rational sqrt(2) *)
+
+let rep_sqrt2 (r:Rational.t) : bool =
+  square_int r.num = 2 * square_int r.den
+
+theorem sqrt2_not_representable_by_reduced r =
+  (Rational.is_reduced r && rep_sqrt2 r) ==> false
+[@@by
+  intros
+  @> [%expand Rational.is_reduced r]   (* r.den > 0 && gcd r.num r.den = 1 *)
+  @> [%expand rep_sqrt2 r]             (* r.num*r.num = 2*(r.den*r.den) *)
+  @> [%expand square_int r.num]
+  @> [%expand square_int r.den]
+  @> flatten
+  @> [%use no_coprime_solution_p2_eq_2q2 r.num r.den]
+  @> exact
+]
+
+theorem rat_square_eq_two_implies_rep r =
+  Rational.eq (Rational.square_plain r) Rational.two ==> rep_sqrt2 r
+[@@by
+  [%expand Rational.eq (Rational.square_plain r) Rational.two]
+  @> [%expand Rational.square_plain r]
+  @> [%expand rep_sqrt2 r]
+  @> auto
+]
+
+theorem sqrt2_not_square_of_reduced r =
+  Rational.is_reduced r ==> not (Rational.eq (Rational.square_plain r) Rational.two)
+[@@by
+  intros
+  @> [%subgoal Rational.eq (Rational.square_plain r) Rational.two ==> false]
+  @>| [
+       (* assume r^2 = 2, derive contradiction *)
+       intros
+       @> [%use rat_square_eq_two_implies_rep r]
+       @> [%use sqrt2_not_representable_by_reduced r]
+       @> auto
+     ;
+       [%use rat_square_eq_two_implies_rep r]          (* from rat_eq (r^2) 2 ==> rep_sqrt2 r *)
+       @> [%use sqrt2_not_representable_by_reduced r]  (* is_reduced r /\ rep_sqrt2 r ==> false *)
+       @> auto
+     ]
+]
+
+theorem sqrt2_not_square_of_reduced_strict r =
+  Rational.is_reduced r 
+  ==> 
+  Rational.square_plain r <> Rational.of_int 2
+[@@by
+  intros   
+  @> [%use sqrt2_not_square_of_reduced r]
+  @> auto
+]
+
+theorem square_of_reduced_is_reduced r =
+  Rational.is_reduced r ==> Rational.is_reduced (Rational.square_plain r)
+[@@by
+  intros
+  @> [%use gcd_square_square_from_coprime r.num r.den]
+  @> auto
+]
+
+theorem sqrt2_not_square_of_reduced_normed (r:Rational.t) =
+  Rational.is_reduced r
+  ==> Rational.square r <> Rational.of_int 2
+[@@by
+  intros
+  @> [%use square_of_reduced_is_reduced r]
+  @> [%use sqrt2_not_square_of_reduced_strict r]
+  @> auto
+]

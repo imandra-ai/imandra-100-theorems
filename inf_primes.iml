@@ -1,0 +1,233 @@
+(* An ImandraX proof of the infinite of primes! 
+   Theorem 11 in the 100 Theorems list. *)
+(* G.Passmore, Imandra *)
+
+[@@@import "mod.iml"]
+
+open Mod.Theorems
+
+(* Divisibility, product, and basic lemmas *)
+
+let divides (d:int) (n:int) : bool = (d <> 0) && (n mod d = 0)
+
+let rec prod_upto (n:int) : int =
+  if n <= 1 then 1 else n * prod_upto (n - 1)
+[@@measure (Ordinal.of_int (max 0 n))]
+
+(* For any n>=2 and 2<=k<=n we have k | (1 * 2 * ... * n). *)
+lemma prod_upto_mod_zero n k =
+  n >= 2 && 2 <= k && k <= n ==> (prod_upto n) mod k = 0
+[@@by
+  induction ()
+  @>| [auto; 
+       [%cases k=n]
+       @>| [[%use mod_mul_right_zero (prod_upto (n-1)) n]
+            @> auto; 
+            [%use mod_mul_preserves_zero n (prod_upto (n-1)) k]
+            @> auto]]]  
+
+lemma divides_prod_interval n k =
+  n >= 2 && 2 <= k && k <= n ==> divides k (prod_upto n)
+[@@by [%simp_only divides]
+   @> [%use prod_upto_mod_zero n k]
+   @> auto]
+
+(* Smallest divisor search and primality *)
+
+let rec small_divisor_from (k:int) (n:int) : int =
+  if n <= 1 then 1
+  else if k > n then n
+  else if (n mod k = 0) then k
+  else small_divisor_from (k + 1) n
+[@@measure (Ordinal.of_int (max 0 (n - k)))]
+
+let is_prime (p:int) : bool =
+  p >= 2 && small_divisor_from 2 p = p
+
+lemma small_divisor_divides_aux n k =
+  (2 <= k && k <= max 2 n) ==> divides (small_divisor_from k n) n
+[@@by
+  induction ()
+  @>| [auto; 
+       [%cases n<=1, k>n, n mod k = 0]
+       @>| [auto; auto; auto; 
+           [%subgoal k<n]
+           @>| [[%expand small_divisor_from k n]
+                @> auto;            
+                [%use mod_self_zero k]
+                @> [%subgoal k=n]
+                @>| [auto; auto]]]
+  ]
+]
+
+lemma small_divisor_ge2_aux n k =
+  (n >= 2 && 2 <= k && k <= max 2 n) ==> small_divisor_from k n >= 2
+[@@by
+  induction ()
+  @>| [auto;
+       [%cases k>n, n mod k = 0]
+       @>| [ (* k>n: returns n, n>=2 *)
+             auto;
+             (* n mod k = 0: returns k, k>=2 *)
+             auto;
+             (* else branch *)
+             [%subgoal k<n] @>| [
+               [%expand small_divisor_from k n] @> auto;
+               auto
+             ]
+           ]
+  ]
+]
+
+lemma small_divisor_ge2 n =
+  n >= 2 ==> small_divisor_from 2 n >= 2
+[@@by [%use small_divisor_ge2_aux n 2]
+   @> auto]
+
+let is_prime (p:int) : bool =
+  p >= 2 && small_divisor_from 2 p = p
+
+(* No k in [2..n] divides prod_upto n + 1 *)
+lemma no_small_divisor_for_euclid_sum n k =
+  n >= 2 && 2 <= k && k <= n ==> not (divides k (prod_upto n + 1))
+[@@by
+  [%norm divides k (prod_upto n + 1)]
+  (* prod_upto n ≡ 0 (mod k) *)
+  @> [%use prod_upto_mod_zero n k]
+  (* rewrite (x+1) mod k and use 1 mod k = 1 (k>=2) *)
+  @> [%subgoal (k > 0 && k > 1 && 1 mod k = 1)] 
+      @>| [[%subgoal (prod_upto n + 1) mod k = 1]
+            @>| [ [%use mod_range 1 k] @> auto; 
+                  [%use mod_add (prod_upto n) 1 k]
+                  @> auto];
+            [%use mod_one_self k] @> auto]]
+
+lemma small_divisor_divides n =
+  n > 1 ==> divides (small_divisor_from 2 n) n
+[@@by [%use small_divisor_divides_aux n 2] @> auto]
+
+lemma sd_le_n n k =
+  (n > 1 && 2 <= k) ==> small_divisor_from k n <= n
+[@@by
+  induction ()
+  @>| [
+    auto;
+    intros
+    @> [%cases k > n]
+    @>| [ auto; auto ]
+  ]
+]
+
+(* Either the search finds a divisor at or before k, or k does not divide n. *)
+lemma sd_le_or_not_divides n j k =
+  (n > 1 && 2 <= j && j <= k) ==> (small_divisor_from j n <= k) || (n mod k <> 0)
+[@@by
+  induction ()
+  @>| [ auto; auto ]
+]
+
+(* Strict minimality: every k in [2 .. sd 2 n - 1] fails to divide n *)
+lemma sd_strictly_minimal_key n k j =
+  (n > 1 && 2 <= k && j = 2 && k < small_divisor_from j n) ==> n mod k <> 0
+[@@by
+  induction ()
+  @>| [
+    [%use sd_le_or_not_divides n j k] @> auto;
+    [%use sd_le_or_not_divides n j k] @> auto
+  ]
+]
+
+lemma sd_strictly_minimal n k =
+  (n > 1 && 2 <= k && k < small_divisor_from 2 n) ==> n mod k <> 0
+[@@by
+    [%use sd_strictly_minimal_key n k 2] @> auto
+]
+
+(* Perhaps our most important function: the Euclidean witness
+   for a bigger prime! *)
+let euclid (n:int) : int =
+  small_divisor_from 2 (prod_upto n + 1)
+
+(* sd is idempotent on inputs > 1:  sd 2 (sd 2 m) = sd 2 m *)
+theorem sd_idempotent_key j m =
+  m > 1 && j = 2 ==> small_divisor_from j (small_divisor_from j m) = small_divisor_from j m
+[@@by
+  induction ()
+  @>| [
+    (* base case *)
+    [%use sd_strictly_minimal_key m (small_divisor_from 2 m - 1) 2] @> auto;
+
+    (* inductive step *)
+    intros
+    @> [%replace j] 
+    @> [%cases small_divisor_from 2 (small_divisor_from 2 m) = small_divisor_from 2 m]
+    @>| [
+      auto;
+
+      (* assume k <> d; derive contradiction via minimality *)
+      [%use sd_le_n (small_divisor_from 2 m) 2]                    (* k <= d *)
+      @> [%use small_divisor_ge2_aux (small_divisor_from 2 m) 2]   (* k >= 2 *)
+      @> [%use small_divisor_divides (small_divisor_from 2 m)]     (* k | d *)
+      @> [%use small_divisor_divides m]                            (* d | m *)
+      @> [%use mod_zero_trans m (small_divisor_from 2 m) (small_divisor_from 2 (small_divisor_from 2 m))]  (* m ≡ 0 mod k *)
+      @> [%use sd_strictly_minimal_key m (small_divisor_from 2 (small_divisor_from 2 m)) 2]  (* if k<d then m ≢ 0 mod k *)
+      @> [%use small_divisor_ge2 m]
+      @> simplify ()
+    ]
+  ]
+]
+
+theorem sd_idempotent m =
+  m > 1 ==> small_divisor_from 2 (small_divisor_from 2 m) = small_divisor_from 2 m
+[@@by [%use sd_idempotent_key 2 m] @> auto]
+
+theorem euclid_is_prime n =
+  n >= 0 ==> is_prime (euclid n)
+[@@by
+  [%use small_divisor_ge2 (prod_upto n + 1)]
+  @> [%cases n < 2]
+  @>| [
+    (* n<2 *)
+    auto;
+    (* n >= 2: m >= 2 so sd_idempotent is the key *)
+    [%use sd_idempotent (prod_upto n + 1)] @> auto
+  ]
+]
+
+theorem prod_upto_ge1 n =
+  prod_upto n >= 1
+[@@by induction ()
+   @>| [auto; [%expand prod_upto n] @> lift_ifs @> nonlin ()]]
+
+theorem euclid_gt_n n =
+  n >= 0 ==> euclid n > n
+[@@by
+  intros
+  @> [%cases n < 2]
+  @>| [
+    (* n = 0 or 1: euclid n = 2 *)
+    auto;
+
+    (* n >= 2 *)
+    [%use prod_upto_ge1 n]
+    @> 
+    [%cases (euclid n) <= n]
+    @>| [
+      (* contradiction: k := euclid n divides m, but k in [2..n] can't divide m *)
+      [%use small_divisor_divides (prod_upto n + 1)]
+      @> [%use small_divisor_ge2 (prod_upto n + 1)]
+      @> [%use no_small_divisor_for_euclid_sum n (euclid n)]
+      @> auto;
+
+      (* already (euclid n) > n *)
+      auto
+    ]
+  ]
+]
+
+(* Finally, our main theorem! There are infinitely many primes! *)
+theorem infinitude_of_primes n =
+  let bigger_prime = euclid (abs n) in
+  is_prime bigger_prime && bigger_prime > n
+[@@by [%use euclid_is_prime (abs n)] 
+   @> [%use euclid_gt_n (abs n)] @> auto]

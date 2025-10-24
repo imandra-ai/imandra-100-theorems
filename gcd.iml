@@ -1,0 +1,791 @@
+(* A development of Euclidean GCD in Imandra,
+   including Bézout coefficients.
+   
+   G.Passmore, Imandra *)
+
+[@@@import "mod.iml"]
+
+open Mod.Theorems
+
+let abs x =
+  if x >= 0 then x else (0 - x)
+
+(* Euclidean GCD by subtraction for a,b >= 0 *)
+let rec gcd (a:int) (b:int) : int =
+    if a < 0 || b < 0 then 0
+    else 
+    if a = 0 then b
+    else if b = 0 then a
+    else if a >= b then gcd (a - b) b
+    else gcd a (b - a)
+[@@measure (Ordinal.of_int (a + b))]
+[@@by auto]
+
+(* If gcd a b > 0, neither input was negative *)
+theorem gcd_pos_implies_nonneg a b =
+  (gcd a b > 0) ==> (a >= 0 && b >= 0)
+[@@by auto]
+
+(* Subtraction step, but only in the nonnegative regime *)
+theorem gcd_step_nonneg a b =
+  (a >= 0 && b >= 0) ==>
+   ((a = 0 ==> gcd a b = b) &&
+    (b = 0 ==> gcd a b = a) &&
+    (a > 0 && b > 0 && a >= b ==> gcd a b = gcd (a - b) b) &&
+    (a > 0 && b > 0 && a <  b ==> gcd a b = gcd a (b - a)))
+[@@by auto]
+
+theorem gcd_comm a b =
+  gcd a b = gcd b a
+[@@by auto]
+
+(* If d | x and d | y then d | (x + y) *)
+theorem dvd_add d x y =
+  d <> 0 && x mod d = 0 && y mod d = 0 ==> (x + y) mod d = 0
+[@@by
+  intros
+  @> [%use mod_add x y d]
+  @> auto
+] [@@rw]
+
+(* If d | x and d | y then d | (x - y) *)
+theorem dvd_sub d x y =
+  d <> 0 && x mod d = 0 && y mod d = 0 ==> (x - y) mod d = 0
+[@@by
+  intros
+  @> [%use mod_mul_preserves_zero (-1) y d]
+  @> [%use mod_add x (-y) d]
+  @> auto
+] [@@rw]
+
+lemma abs_zero n =
+  (abs n = 0) = (n = 0)
+[@@by auto] [@@rw]
+
+theorem mod_add_fc a b k =
+  k <> 0 ==> (a + b) mod k = ((a mod k) + (b mod k)) mod k
+[@@fc] [@@rw]
+[@@by [%use Mod.Theorems.mod_add a b k] @> exact]
+
+theorem gcd_dvd_both_pos a b =
+  gcd a b > 0 
+  ==> 
+  (a mod (gcd a b) = 0 
+  && b mod (gcd a b) = 0)
+[@@by
+  induction ()
+  @>| [ (* base case *)
+        intros @> simplify () @>| [auto; auto];
+
+        (* inductive step 1 *)
+        [%use dvd_add (gcd a (b-a)) a (b-a)]
+        @> [%expand gcd a b]
+        @> auto;
+
+       (* inductive step 2 *)
+       [%use dvd_add (gcd (a-b) b) (a-b) b]
+       @> [%expand gcd a b]
+       @> auto;
+  ]
+]
+
+theorem gcd_dvd_left_pos a b =
+  (gcd a b > 0) ==> a mod (gcd a b) = 0
+[@@by intros @> [%use gcd_dvd_both_pos a b] @> auto]
+
+theorem gcd_dvd_right_pos a b =
+  (gcd a b > 0) ==> b mod (gcd a b) = 0
+[@@by intros @> [%use gcd_dvd_both_pos a b] @> auto]
+
+theorem gcd_absorbs_common_divisor d a b =
+  (d > 0 && a mod d = 0 && b mod d = 0) ==> (gcd a b) mod d = 0
+[@@by
+  induction ()
+  @>| [
+    (* base: one is zero, or negatives blocked by the guard *)
+    intros @> auto;
+
+    (* inductive branch: b > a > 0 *)
+    intros
+    (* d | (b - a) by dvd_sub, then IH on (a, b-a) *)
+    @> [%use dvd_sub d b a]
+    @> [%expand gcd a b] @> auto;
+
+    (* inductive branch: a >= b > 0 *)
+    intros
+    (* d | (a - b) by dvd_sub, then IH on (a-b, b) *)
+    @> [%use dvd_sub d a b]
+    @> [%expand gcd a b] @> auto
+  ]
+]
+
+theorem mod_drop_one_b a b =
+  (b > 0 && a >= b) ==> (a - b) mod b = a mod b
+[@@by
+  intros
+  @> [%use mod_add a (-b) b]
+  @> [%use mod_mul_right_zero (-1) b]
+  @> [%use Int.mod_eq_emod (a-b) b]
+  @> [%use Int.mod_eq_emod a b]
+  @> auto
+]
+
+lemma div_mod a b = b <> 0 ==> a = (a/b)*b + a mod b
+[@@by auto]
+
+lemma div_pos a b =
+ a >= 0 && b > 0 ==> a/b >= 0
+[@@by nonlin ()]
+
+(* If 0 ≤ a < b and b>0 then a mod b = a *)
+theorem mod_small a b =
+  (0 <= a && b > 0 && a < b) ==> a mod b = a
+[@@by
+  intros @>
+  (* a = 0*b + a and 0 ≤ a < b, so a is already a canonical remainder *)
+  [%use mod_range a b]
+  @> [%use div_mod a b]
+  @> let q = a/b in
+     let r = a mod b in
+     [%subgoal 0 <= r && r < b && a = q*b + r]
+     @>| [ [%cases q=0, q<0]
+            @>| [
+              auto;
+
+              simplify ()
+              @> swap (-1) @> swap (-1)
+              @> [%use div_pos a b]
+              @> auto;
+
+              nonlin ()
+            ];
+           auto]
+]
+
+theorem gcd_remainder_step a b =
+  a >= 0 && b > 0 ==> gcd a b = gcd b (a mod b)
+[@@by
+  (* Work by peeling off B until reaching the remainder *)
+  induction ()
+  @>| [
+    auto;
+
+    (* a >= b: one peel *)
+    intros
+    @> [%use mod_drop_one_b a b]
+    @> [%expand gcd a b] @> simplify ()
+    @> swap (-1) @> swap (-1)
+    @> drop 1 @>
+    [%subgoal b>0]
+    @>| [ [%use mod_small a b]
+           @> simplify ()
+           @> [%replace a mod b]
+           @> [%expand gcd b a]
+           @> simplify ()
+           @>| [auto; 
+                [%use gcd_comm (b - a) a]
+                @> auto]; auto];
+
+    (* a < b: swap subtract *)
+    intros
+    @> [%use mod_drop_one_b a b]
+    @> auto
+  ]
+]
+
+(* Bézout coefficients for gcd, by subtraction recursion *)
+let rec bezout_sub (a:int) (b:int) : int * int =
+  if a < 0 || b < 0 then (0,0)          (* never used when gcd>0 *)
+  else if a = 0 then (0,1)              (* 0*a + 1*b = b *)
+  else if b = 0 then (1,0)              (* 1*a + 0*b = a *)
+  else if a >= b then
+    let (u',v') = bezout_sub (a - b) b in
+    (u', v' - u')                       (* u'a + (v'-u')b = u'(a-b)+v'b *)
+  else
+    let (u',v') = bezout_sub a (b - a) in
+    (u' - v', v')                       (* (u'-v')a + v'b = u'a+v'(b-a) *)
+[@@measure (Ordinal.of_int (a + b))]
+[@@by auto]
+
+theorem bezout_sub_correct a b =
+  let (u,v) = bezout_sub a b in
+  u*a + v*b = gcd a b
+[@@by auto]
+
+(* “Coprime iff Bezout=1” for gcd *)
+theorem gcd_eq_one_iff_bezout a b =
+  (gcd a b = 1) = (let (u,v) = bezout_sub a b in u*a + v*b = 1)
+[@@by
+  [%use bezout_sub_correct a b]
+  @> auto]
+
+theorem one_mod_d_zero_implies_d1 d =
+  (d > 0 && 1 mod d = 0) ==> d = 1
+[@@by [%use mod_range 1 d] @> auto]
+
+(* Pull-down lemmas from squares using Bezout *)
+theorem pulls_down_from_square_left d a b u v =
+  (d > 0 && (a*a) mod d = 0 && b mod d = 0 && u*a + v*b = 1)
+  ==> a mod d = 0
+[@@by
+  intros
+  @> [%use mod_mul_preserves_zero u (a*a) d]
+  @> [%use mod_mul_preserves_zero (v*a) b d]
+  @> [%use mod_add (u*(a*a)) (v*a*b) d]
+  @> lift_ifs
+  @>| [ [%subgoal (((a*a)*u + (a*b)*v) mod d) = 0]
+        @>| [[%subgoal ((a*a)*u + (a*b)*v) = a * (a*u + b*v)]
+              @>| [[%replace (a*u + b*v)] @> esimp
+                    @> swap (-2) @> swap (-2)
+                    @> [%replace ((a * (a * u)) + (a * (b * v)))]
+                    @> exact;
+                    
+                    auto]
+        ; auto];        
+       auto]
+]
+
+theorem pulls_down_from_square_right d a b u v =
+  (d > 0 && a mod d = 0 && (b*b) mod d = 0 && u*a + v*b = 1)
+  ==> b mod d = 0
+[@@by
+  intros
+  @> [%use mod_mul_preserves_zero (u*b) a d]
+  @> [%use mod_mul_preserves_zero v (b*b) d]
+  @> [%use mod_add (u*a*b) (v*(b*b)) d]
+  @> lift_ifs
+  @>| [
+       [%subgoal ((u*a*b + v*(b*b)) mod d) = 0]
+       @>| [
+            (* factor to b*(a*u + b*v), then use Bezout (a*u + b*v = 1) *)
+            [%subgoal (u*a*b + v*(b*b)) = b * (a*u + b*v)]
+            @>| [
+                 (* Now replace (a*u + b*v) by 1 and finish *)
+                 [%replace (a*u + b*v)] @> esimp
+                 @> [%replace ((a * (b * u)) + (b * (b * v)))]
+                 @> exact;
+                 auto
+               ];
+            auto
+          ];
+       auto
+     ]
+]
+
+theorem gcd_eq_one_iff_bezout a b =
+  (gcd a b = 1) = (let (u,v) = bezout_sub a b in u*a + v*b = 1)
+[@@by
+  [%use bezout_sub_correct a b]
+  @> auto
+]
+
+lemma zero_mod x = x <> 0 ==> 0 mod x = 0
+
+lemma elim_neq x y =
+  (x <> y) = not (x = y)
+
+theorem mod_sum_zero_from_terms d x y =
+  ( d <> 0 && x mod d = 0 && y mod d = 0) ==> (((x mod d) + (y mod d)) mod d) = 0
+[@@by
+  intros
+  @> [%use mod_add x y d]
+  @> auto
+]
+
+theorem divisor_square_left_in_coprime_is_one d a b =
+  (gcd a b = 1 && d > 0 && d <> 0 && (a*a) mod d = 0 && b mod d = 0) ==> d = 1
+[@@by
+  intros
+  (* use Bezout for gcd *)
+  @> [%use gcd_eq_one_iff_bezout a b]
+       @> let (u,v) = bezout_sub a b in
+       (* pull a down from a^2, then 1 ≡ 0 (mod d) ⇒ d=1 *)
+       [%use pulls_down_from_square_left d a b u v]  (* needs ua+vb=1; esimp will expose it *)
+       @> [%use mod_mul_preserves_zero u a d]
+       @> [%use mod_mul_preserves_zero v b d]
+       @> [%use mod_add (u*a) (v*b) d]
+       @> [%use one_mod_d_zero_implies_d1 d]
+
+       @> [%replace (gcd a b) = 1]
+       @> [%replace (u * a) + (v * b)]
+
+       @> generalize [%t u] "u"
+       @> generalize [%t v] "v"
+       @> [%use mod_sum_zero_from_terms d (a*u) (b*v)]
+       @> auto
+
+]
+
+(* If gcd a b = 1, neither input went down the negative-guard,
+   so both are nonnegative. *)
+theorem gcd_eq_one_nonneg a b =
+  (gcd a b = 1) ==> (a >= 0 && b >= 0)
+[@@by
+  auto
+]
+
+(* If gcd a b = 1, then a and b are not both zero. *)
+theorem gcd_eq_one_not_both_zero a b =
+  (gcd a b = 1) ==> (a <> 0 || b <> 0)
+[@@by
+  auto
+]
+
+(* Nonzero squares stay nonzero. *)
+theorem square_nonzero_if_nonzero a =
+  (a <> 0) ==> (a*a) <> 0
+[@@by
+  auto
+]
+
+(* If a,b are nonnegative and not both zero, gcd a b is positive. *)
+theorem gcd_pos_from_nonneg_not_both_zero a b =
+  (a >= 0 && b >= 0 && (a <> 0 || b <> 0)) ==> gcd a b > 0
+[@@by
+  auto
+]
+
+theorem gcd_pos_of_square_pair a b =
+  (gcd a b = 1) ==> gcd (a*a) b > 0
+[@@by
+  intros
+  (* from gcd a b = 1 ⇒ a,b ≥ 0 *)
+  @> [%use gcd_eq_one_nonneg a b]
+  (* from gcd a b = 1 ⇒ a ≠ 0 ∨ b ≠ 0; thus a*a ≠ 0 ∨ b ≠ 0 *)
+  @> [%use gcd_eq_one_not_both_zero a b]
+  @> [%use square_nonzero_if_nonzero a]
+  (* conclude positivity for the pair (a*a, b) *)
+  @> [%use gcd_pos_from_nonneg_not_both_zero (a*a) b]
+  @> auto
+]
+
+theorem coprime_square_left_sub_pos_g a b =
+  gcd a b = 1 ==> gcd (a*a) b = 1
+[@@by
+  intros
+  (* Let g be the gcd we want to prove equals 1 *)
+  @> let g = gcd (a*a) b in
+
+  (* g > 0  *)
+  [%use gcd_pos_of_square_pair a b]
+
+  (* g divides a^2 and b *)
+  @> [%use gcd_dvd_both_pos (a*a) b]
+
+  (* In the coprime (a,b) case, any positive common divisor of a^2 and b is 1 *)
+  @> [%use divisor_square_left_in_coprime_is_one g a b]
+
+  (* done *)
+  @> auto
+]
+
+theorem gcd_sub_eq_one_nonneg a b =
+  (gcd a b = 1) ==> (a >= 0 && b >= 0)
+[@@by auto]
+
+theorem gcd_sub_eq_one_not_both_zero a b =
+  (gcd a b = 1) ==> (a <> 0 || b <> 0)
+[@@by auto]
+
+theorem square_nonzero_if_nonzero a =
+  (a <> 0) ==> (a*a) <> 0
+[@@by auto]
+
+theorem gcd_sub_pos_from_nonneg_not_both_zero a b =
+  (a >= 0 && b >= 0 && (a <> 0 || b <> 0)) ==> gcd a b > 0
+[@@by auto]
+
+theorem gcd_sub_pos_of_square_pair_right a b =
+  (gcd a b = 1) ==> gcd a (b*b) > 0
+[@@by
+  intros
+  @> [%use gcd_sub_eq_one_nonneg a b]
+  @> [%use gcd_sub_eq_one_not_both_zero a b]
+  @> [%use square_nonzero_if_nonzero b]
+  @> [%use gcd_sub_pos_from_nonneg_not_both_zero a (b*b)]
+  @> auto
+]
+
+theorem one_mod_zero_from_terms d a b u v =
+  d <> 0 && ((a*u) mod d = 0 && (b*v) mod d = 0 && ((a*u) + (b*v)) = 1)
+  ==> (1 mod d) = 0
+[@@by
+  intros
+  @> [%use mod_add (a*u) (b*v) d]
+  @> [%replace (a * u) mod d]
+  @> [%replace (b * v) mod d]
+  @> [%replace (a * u) + (b * v)]
+  @> auto
+]
+
+theorem divisor_square_right_in_coprime_is_one d a b =
+  (gcd a b = 1 && d > 0 && d <> 0 && a mod d = 0 && (b*b) mod d = 0) ==> d = 1
+[@@by
+  intros
+  @> [%use gcd_eq_one_iff_bezout a b]
+  @> let (u,v) = bezout_sub a b in
+     esimp                                   (* exposes u*a + v*b = 1 *)
+  @> [%use pulls_down_from_square_right d a b u v]  (* gives b mod d = 0 *)
+  @> esimp
+  @> [%use mod_mul_preserves_zero u a d]     (* (u*a) mod d = 0 *)
+  @> [%use mod_mul_preserves_zero v b d]     (* (v*b) mod d = 0 *)
+  @> [%use mod_sum_zero_from_terms d (a*u) (b*v)]
+  @> [%use one_mod_d_zero_implies_d1 d]
+  @> simplify ()
+
+  @> swap (-2) @> swap (-2)
+  @> [%use one_mod_zero_from_terms d a b u v]
+  @> [%use one_mod_d_zero_implies_d1 d]
+  @> generalize [%t u] "u"
+  @> generalize [%t v] "v"
+  @> simplify ()  
+]
+
+theorem gcd_pos_of_square_pair_right a b =
+  (gcd a b = 1) ==> gcd a (b*b) > 0
+[@@by
+  intros
+  @> [%use gcd_sub_eq_one_nonneg a b]
+  @> [%use gcd_sub_eq_one_not_both_zero a b]
+  @> [%use square_nonzero_if_nonzero b]
+  @> [%use gcd_sub_pos_from_nonneg_not_both_zero a (b*b)]
+  @> auto
+]
+
+theorem coprime_square_right_sub_pos_g a b =
+  gcd a b = 1 ==> gcd a (b*b) = 1
+[@@by
+  intros
+  @> let g = gcd a (b*b) in
+     [%use gcd_pos_of_square_pair_right a b]    (* g > 0 *)
+  @> [%use gcd_dvd_both_pos a (b*b)]            (* a mod g = 0 ∧ (b*b) mod g = 0 *)
+  @> [%use divisor_square_right_in_coprime_is_one g a b]
+  @> auto
+]
+
+theorem gcd_square_square_from_coprime a b = 
+  (gcd a b = 1) ==> gcd (a*a) (b*b) = 1
+[@@by
+  intros
+  @> [%use coprime_square_left_sub_pos_g a b]      (* gcd_sub (a*a) b = 1 *)
+  @> [%use coprime_square_right_sub_pos_g (a*a) b] (* with x := a*a *)
+  @> auto
+]
+
+(* Now, onto modular GCD! *)
+
+(*
+let rec gcd (a:int) (b:int) : int =
+  let a = if a < 0 then (-1*a) else a in
+  let b = if b < 0 then (-1*b) else b in
+  if b = 0 then a else gcd b (a mod b)
+[@@measure (Ordinal.of_int (abs b))]
+[@@by [%use mod_decreases a b]
+   @> auto]
+
+theorem gcd_step a b =
+  (a >= 0 && b >= 0 && b <> 0) ==> gcd a b = gcd b (a mod b)
+[@@by
+  intros
+  @> [%norm gcd a b]
+  @> auto]
+*)
+
+(*
+
+(*
+
+(* For b>0:
+   (-a) mod b = if a mod b = 0 then 0 else b - (a mod b) *)
+lemma neg_mod_simple a b =
+  b > 0 && a >= 0 ==> 
+  (-a) mod b = (if a mod b = 0 then 0 else b - (a mod b))
+[@@by auto]
+
+(* For b>0 and 0 ≤ r < b:  gcd b (b - r) = gcd b r *)
+theorem gcd_invariance_b_minus_r b r =
+  (b > 0 && 0 <= r && r < b) ==> gcd b (b - r) = gcd b r
+[@@by
+  intros
+  @> let d1 = gcd b (b - r) in
+  [%use gcd_dvd_both_pos b (b - r)]  @> flatten   (* d1|b, d1|(b-r) *)
+  @> [%use mod_mul_preserves_zero (-1) (b - r) d1]   (* ⇒ r ≡ 0 (mod d1) *)
+  @> [%use mod_add b (- (b - r)) d1]
+  @> [%use gcd_dvd_both_pos b r]        @> flatten   (* d2|b, d2|r *)
+  @> [%use mod_mul_preserves_zero (-1) r d2]         (* ⇒ (b-r) ≡ 0 (mod d2) *)
+  @> [%use mod_add b (-r) d2]
+  @> auto
+]
+
+
+
+
+(* ---- 0) Unfold the recursion when needed ---- *)
+
+theorem gcd_step_b_eq_zero a b =
+  b = 0 ==> gcd a b = abs a
+[@@by auto]
+
+lemma zero_split x y = ((x * y) = 0) = (x = 0 || y = 0)
+
+theorem gcd_step_b_neq_zero a b =
+  a > 0 && b > 0 ==> gcd a b = gcd b (a mod b)
+[@@by auto]
+
+theorem gcd_step_a_neg_b_pos a b =
+  a < 0 && b > 0 ==> gcd a b = gcd b (a mod b)
+[@@by induction ()
+   @>| [auto; lift_ifs @>>| arith]]
+
+
+theorem gcd_step_b_eq_zero a b =
+  (b = 0 ==> gcd a b = abs a) &&
+  (b <> 0 ==> gcd a b = gcd b (a mod b))
+[@@by [%use gcd_step_b_eq_zero a b]
+   @> [%use gcd_step_b_neq_zero a b]
+   @> auto]
+
+
+theorem gcd_zero_iff_both_zero a b =
+  (gcd a b = 0) = (a = 0 && b = 0)
+[@@by
+  induction ()
+  @>| [
+    intros
+    @> [%use gcd_step a b]
+    @> lift_ifs
+    @>| [ auto ];
+    intros
+    @> [%use gcd_step a b]
+    @> lift_ifs
+    @>| [ auto ]
+  ]
+]
+
+theorem gcd_pos_if_not_both_zero a b =
+  (a <> 0 || b <> 0) ==> gcd a b > 0
+[@@by intros @> [%use gcd_zero_iff_both_zero a b] @> auto]
+
+
+(* ---- 1) “gcd divides both” proved from the recursion ---- *)
+
+theorem gcd_dvd_both_pos a b =
+  (gcd a b > 0) ==> (a mod (gcd a b) = 0 && b mod (gcd a b) = 0)
+[@@by
+  induction ()
+  @>| [
+    (* base: b = 0 *)
+    intros
+    @> [%use gcd_step a b]
+    @> lift_ifs
+    @>| [ auto ];
+
+    (* step: b <> 0 *)
+    intros
+    @> [%use gcd_step a b]                 (* gcd a b = gcd b (a mod b) *)
+    @> lift_ifs
+    @>| [
+      [%let g = gcd b (a mod b)]
+      [%use gcd_pos_if_not_both_zero b (a mod b)]
+      @> [%use gcd_dvd_both_pos b (a mod b)]
+      @> flatten
+      @> [%use div_mod a b]                (* a = (a/b)*b + (a mod b) *)
+      @> [%use mod_mul_preserves_zero (a / b) b g]
+      @> [%use mod_add ((a / b) * b) (a mod b) g]
+      @> auto
+    ]
+  ]
+]
+
+theorem gcd_dvd_left_pos a b =
+  (gcd a b > 0) ==> a mod (gcd a b) = 0
+[@@by intros @> [%use gcd_dvd_both_pos a b] @> auto]
+
+theorem gcd_dvd_right_pos a b =
+  (gcd a b > 0) ==> b mod (gcd a b) = 0
+[@@by intros @> [%use gcd_dvd_both_pos a b] @> auto]
+
+
+(* ---- 2) Bézout coefficients by mirroring the recursion ---- *)
+
+let sgn (x:int) : int = if x < 0 then -1 else 1
+
+let rec bezout_coeffs (a:int) (b:int) : int * int =
+  if b = 0 then (sgn a, 0)
+  else
+    let (u', v') = bezout_coeffs b (a mod b) in
+    let q = a / b in
+    (* From u'*b + v'*(a mod b) = gcd b (a mod b) = gcd a b
+       and (a mod b) = a - q*b:  v'*a + (u' - v'*q)*b = gcd a b *)
+    (v', u' - v'*q)
+[@@measure (Ordinal.of_int (abs b))]
+[@@by [%use mod_decreases a b] @> auto]
+
+theorem bezout_correct a b =
+  let (u,v) = bezout_coeffs a b in
+  u*a + v*b = gcd a b
+[@@by
+  induction ()
+  @>| [
+    intros
+    @> unfold bezout_coeffs
+    @> [%use gcd_step a 0]
+    @> lift_ifs
+    @>| [ auto ];
+
+    intros
+    @> unfold bezout_coeffs
+    @> [%use bezout_correct b (a mod b)]
+    @> [%use gcd_step a b]
+    @> lift_ifs
+    @>| [
+      [%use div_mod a b]     (* a = (a/b)*b + (a mod b) *)
+      @> auto
+    ]
+  ]
+]
+
+theorem gcd_eq_one_iff_bezout a b =
+  (gcd a b = 1) = (let (u,v) = bezout_coeffs a b in u*a + v*b = 1)
+[@@by
+  [%cases gcd a b = 1]
+  @>| [
+    intros @> [%use bezout_correct a b] @> auto;
+    intros @> [%use bezout_correct a b] @> auto
+  ]
+]
+
+theorem one_mod_d_zero_implies_d1 d =
+  (d > 0 && 1 mod d = 0) ==> d = 1
+[@@by auto]
+
+
+(* ---- 3) Pull-down from squares using Bezout ---- *)
+
+theorem pulls_down_from_square_left d a b u v =
+  (d > 0 && (a*a) mod d = 0 && b mod d = 0 && u*a + v*b = 1)
+  ==> a mod d = 0
+[@@by
+  intros
+  (* u*a^2 + v*a*b = a *)
+  @> [%use mod_mul_preserves_zero u (a*a) d]
+  @> [%use mod_mul_preserves_zero (v*a) b d]
+  @> [%use mod_add (u*(a*a)) (v*a*b) d]
+  @> auto
+]
+
+theorem pulls_down_from_square_right d a b u v =
+  (d > 0 && a mod d = 0 && (b*b) mod d = 0 && u*a + v*b = 1)
+  ==> b mod d = 0
+[@@by
+  intros
+  (* u*a*b + v*b^2 = b *)
+  @> [%use mod_mul_preserves_zero (u*b) a d]
+  @> [%use mod_mul_preserves_zero v (b*b) d]
+  @> [%use mod_add (u*a*b) (v*(b*b)) d]
+  @> auto
+]
+
+
+(* ---- 4) Coprime-square side lemmas ---- *)
+
+theorem coprime_square_left a b =
+  gcd a b = 1 ==> gcd (a*a) b = 1
+[@@by
+  intros
+  @> [%let g = gcd (a*a) b]
+  @> [%cases g = 0]
+  @>| [
+    auto;
+
+    [%use gcd_pos_if_not_both_zero (a*a) b]
+    @> [%use gcd_dvd_left_pos (a*a) b]   (* (a*a) mod g = 0 *)
+    @> [%use gcd_dvd_right_pos (a*a) b]  (* b mod g = 0 *)
+    [%use gcd_eq_one_iff_bezout a b]     (* ua + vb = 1 *)
+    @> lift_ifs
+    @>| [
+      [%use pulls_down_from_square_left g a b u v]  (* a mod g = 0 *)
+      @> (* Now g | a and g | b ⇒ 1 ≡ 0 (mod g) via ua+vb=1 *)
+         [%use mod_mul_preserves_zero u a g]
+      @> [%use mod_mul_preserves_zero v b g]
+      @> [%use mod_add (u*a) (v*b) g]
+      @> [%use one_mod_d_zero_implies_d1 g]
+      @> auto
+    ]
+  ]
+]
+
+theorem coprime_square_right a b =
+  gcd a b = 1 ==> gcd a (b*b) = 1
+[@@by
+  intros
+  @> [%let g = gcd a (b*b)]
+  @> [%cases g = 0]
+  @>| [
+    auto;
+
+    [%use gcd_pos_if_not_both_zero a (b*b)]
+    @> [%use gcd_dvd_left_pos a (b*b)]   (* a mod g = 0 *)
+    @> [%use gcd_dvd_right_pos a (b*b)]  (* (b*b) mod g = 0 *)
+    [%use gcd_eq_one_iff_bezout a b]     (* ua + vb = 1 *)
+    @> lift_ifs
+    @>| [
+      [%use pulls_down_from_square_right g a b u v]  (* b mod g = 0 *)
+      @> [%use mod_mul_preserves_zero u a g]
+      @> [%use mod_mul_preserves_zero v b g]
+      @> [%use mod_add (u*a) (v*b) g]
+      @> [%use one_mod_d_zero_implies_d1 g]
+      @> auto
+    ]
+  ]
+]
+
+
+(* ---- 5) Lift coprimality over a product on the right ---- *)
+
+theorem gcd_lifts_over_product_right x z w =
+  (gcd x z = 1 && gcd x w = 1) ==> gcd x (z*w) = 1
+[@@by
+  intros
+  @> [%let d = gcd x (z*w)]
+  @> [%cases d = 0]
+  @>| [
+    auto;
+
+    [%use gcd_pos_if_not_both_zero x (z*w)]
+    @> [%use gcd_dvd_left_pos x (z*w)]   (* x mod d = 0 *)
+    @> [%use gcd_dvd_right_pos x (z*w)]  (* (z*w) mod d = 0 *)
+
+    (* Bezout on (x,z): u1*x + v1*z = 1; multiply by w to get w mod d = 0 *)
+    [%use gcd_eq_one_iff_bezout x z] @> lift_ifs
+    @>| [
+      [%use mod_mul_preserves_zero u x w d]
+      @> [%use mod_mul_preserves_zero v z w d]
+      @> [%use mod_add (u*(x*w)) (v*(z*w)) d]
+      @> [%use gcd_eq_one_iff_bezout x w] @> lift_ifs
+      @>| [
+        [%use mod_mul_preserves_zero u0 x d]
+        @> [%use mod_mul_preserves_zero v0 w d]
+        @> [%use mod_add (u0*x) (v0*w) d]
+        @> [%use one_mod_d_zero_implies_d1 d]
+        @> auto
+      ]
+    ]
+  ]
+]
+
+
+(* ---- 6) Goal: squares of coprime are coprime ---- *)
+
+theorem gcd_square_square_from_coprime a b =
+  (gcd a b = 1) ==> gcd (a*a) (b*b) = 1
+[@@by
+  intros
+  @> [%use coprime_square_left a b]
+  @> [%use coprime_square_right a b]
+  @> [%use gcd_lifts_over_product_right (a*a) b b]
+  @> auto
+]
+
+*)
+*)

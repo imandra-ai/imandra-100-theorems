@@ -1,0 +1,441 @@
+(* Core properties of `mod`, first derived on our definition of
+   `Euclidean_mod.emod`, and then mapped to `Int.mod`.
+
+   G.Passmore, Imandra
+ *)
+
+let abs x =
+  if x >= 0 then x else ~-x
+
+module Euclidean_mod = struct
+
+  open Int.Euclidean_mod
+
+  lemma emod_range a m =
+    m <> 0 ==> 0 <= emod a m && emod a m < abs m
+  [@@by intros
+     @> [%expand emod a m]
+     @> auto]
+
+  lemma emod_eq_when_in_range a m =
+    (m <> 0 && 0 <= a && a < abs m) ==> emod a m = a
+  [@@by [%use emod_range a m] @> auto]
+
+  lemma emod_idem a m =
+    m <> 0 ==> emod (emod a m) m = emod a m
+  [@@by [%use emod_range a m] @> [%use emod_eq_when_in_range (emod a m) m] @> auto]
+
+  lemma rem_pos_neg_step a b =
+    (b > 0 && a < 0) ==> rem_pos a b = rem_pos (a + b) b
+  [@@by [%expand rem_pos a b] @> auto]
+
+  lemma rem_pos_ge_step a b =
+    (b > 0 && a >= b) ==> rem_pos a b = rem_pos (a - b) b
+  [@@by [%expand rem_pos a b] @> auto]
+
+  lemma rem_pos_left_ge_step a b =
+    (b > 0 && a + b >= b) ==> rem_pos (a + b) b = rem_pos ((a + b) - b) b
+  [@@by [%expand rem_pos (a + b) b] @> auto]
+
+  lemma rem_pos_in_range_shift a b =
+    (b > 0 && 0 <= a && a < b) ==> rem_pos (a + b) b = a
+  [@@by [%expand rem_pos (a + b) b] @> auto]
+
+  lemma emod_shift_step a m =
+    m <> 0 ==> emod (a + (abs m)) m = emod a m
+  [@@by
+    intros
+    @> [%expand emod (a + abs m) m]
+    @> [%expand emod a m]
+    @> [%cases a < abs m, a < 0]
+    @>| [
+         (* Case 1: a < 0. Then rem_pos a b = rem_pos (a+b) b *)
+         [%use rem_pos_neg_step a (abs m)] @> auto;
+
+         (* Case 2: 0 <= a < |m|. Then rem_pos (a+b) b = a and rem_pos a b = a *)
+         [%use rem_pos_in_range_shift a (abs m)]
+         @> [%use emod_eq_when_in_range a m]
+         @> auto;
+
+         (* Case 3: a >= |m|. Then rem_pos (a+b) b = rem_pos ((a+b)-b) b = rem_pos a b *)
+         [%use rem_pos_left_ge_step a (abs m)] @> auto
+    ]
+  ]
+
+  lemma emod_shift_neg_step a m =
+    m <> 0 ==> emod (a - abs m) m = emod a m
+  [@@by
+    intros
+    @> [%use emod_shift_step (a - abs m) m] @> auto 
+  ]
+
+  let rec int_induct_3 a m k =
+    if k <= 0 then 0
+    else int_induct_3 a m (k - 1)
+
+  lemma emod_shift_by_multiple a m k =
+    k >= 0 && m <> 0 ==> emod (a + k * abs m) m = emod a m
+  [@@by
+    intros
+    @> [%expand emod a m]
+    @> induction ~id:[%id int_induct_3] ()
+    @>| [
+      (* k = 0 *)
+      auto;
+      (* step k -> k+1 *)
+      [%use emod_shift_step (a + k * abs m) m] @> auto
+    ]
+  ]
+
+  lemma emod_shift_by_nonpos_multiple a m k =
+    (k <= 0 && m <> 0) ==> emod (a + k * abs m) m = emod a m
+  [@@by
+    intros
+    @> let t = 0-k in
+    [%subgoal t >= 0]
+    @>| [
+          (* main branch: assume t >= 0 and t = -k *)
+          (* show emod (a - t*|m|) = emod a via the k>=0 lemma on base (a - t|m|) *)
+          [%use emod_shift_by_multiple (a - t * abs m) m t]
+          @> auto;
+
+          (* obligation: from k <= 0, show t >= 0 *)
+          auto
+      ]
+  ]
+
+  lemma emod_shift_by_any_multiple a m k =
+    not (m = 0) ==> emod (a + k * abs m) m = emod a m
+  [@@by
+    intros
+    @> [%cases k >= 0]
+    @>| [
+      [%use emod_shift_by_multiple a m k] @> auto;
+      [%use emod_shift_by_nonpos_multiple a m k] @> auto
+    ]
+  ]
+
+  lemma emod_replace_in_sum_left a t m =
+    m <> 0 ==> emod (a + t) m = emod (emod a m + t) m
+  [@@by
+    intros
+    @> [%expand emod a m]
+    @> induction ()
+    @>| [
+         (* base: a already in range ==> emod a m = a *)
+         [%use emod_eq_when_in_range a m] @> auto;
+
+         (* step a < 0: (a+b)+t = (a+t)+b *)
+         [%use rem_pos_neg_step a (abs m)]
+         @> [%use emod_shift_step (a + t) m]
+         @> auto;
+
+        (* step a >= b: (a-b)+t = (a+t)-b *)
+        [%use rem_pos_ge_step a (abs m)]
+        @> [%use emod_shift_neg_step (a + t) m]
+        @> auto
+    ]
+  ]
+
+  lemma emod_replace_in_sum_right b t m =
+    m <> 0 ==> emod (t + b) m = emod (t + emod b m) m
+  [@@by
+    intros
+    @> [%use emod_replace_in_sum_left b t m]
+    @> auto
+  ]
+
+  (* how many +-|b| steps rem_pos performs, signed *)
+  let rec qcoef (a:int) (b:int) : int =
+    if b <= 0 then 0
+    else if a < 0 then qcoef (a + b) b - 1
+    else if a >= b then qcoef (a - b) b + 1
+    else 0
+  [@@measure (Ordinal.of_int (abs a))]
+  [@@by auto]
+
+  lemma emod_rep_eq a m =
+    m <> 0 ==> a = emod a m + qcoef a (abs m) * abs m
+  [@@by
+    intros
+    @> [%expand emod a m]
+    @> induction ()
+    @>| [
+         (* base: 0 <= a < |m| ==> qcoef = 0, rem_pos a |m| = a *)
+         auto;
+
+         (* step a < 0: add |m| once and decrement qcoef *)
+         [%use rem_pos_neg_step a (abs m)]
+         @> auto;
+
+         (* step a >= |m|: subtract |m| once and increment qcoef *)
+         [%use rem_pos_ge_step a (abs m)]
+         @> auto
+    ]
+  ]
+
+  lemma mul_rep_eq a t m =
+    m <> 0 ==> a * t = (emod a m * t) + (qcoef a (abs m) * t) * abs m
+  [@@by
+    intros
+    @> [%use emod_rep_eq a m]   (* a = emod a m + qcoef*|m| *)
+    @> nonlin ()                (* distribute and reassociate: (x+y)*t = x*t + y*t, (q*|m|)*t = (q*t)*|m| *)
+  ]
+
+  lemma emod_replace_in_prod_left a t m =
+    m <> 0 ==> emod (a * t) m = emod (emod a m * t) m
+  [@@by
+    intros
+    @> [%use mul_rep_eq a t m]  (* a*t = (emod a m)*t + (q*t)*|m| *)
+    @> [%replace a * t]
+    @> [%use emod_shift_by_any_multiple (emod a m * t) m (qcoef a (abs m) * t)]
+    @> auto
+  ]
+
+  lemma emod_replace_in_prod_right b t m =
+    m <> 0 ==> emod (t * b) m = emod (t * emod b m) m
+  [@@by
+    intros
+    @> [%use emod_replace_in_prod_left b t m]
+    @> auto]
+
+  lemma emod_zero_self m =
+    m <> 0 ==> emod 0 m = 0
+  [@@by [%use emod_eq_when_in_range 0 m] @> auto]
+
+  lemma emod_self m =
+    m <> 0 ==> emod m m = 0
+  [@@by
+    intros
+    @> [%use emod_shift_by_any_multiple 0 m 1] @> auto]
+
+  lemma emod_mul_right_zero x m =
+    m <> 0 ==> emod (x * m) m = 0
+  [@@by
+    intros
+    @> [%use emod_replace_in_prod_right m x m]   (* emod (x*m) = emod (x*emod m m) *)
+    @> [%use emod_self m]
+    @> [%use emod_zero_self m]
+    @> auto]
+
+  lemma emod_mul_preserves_zero c x m =
+    (m <> 0 && emod x m = 0) ==> emod (c * x) m = 0
+  [@@by
+    intros
+    @> [%use emod_replace_in_prod_left x c m]  (* emod (c*x) = emod (c*emod x m) *)
+    @> [%use emod_zero_self m]
+    @> auto]
+
+  lemma emod_add a b m =
+    m <> 0 ==> emod (a + b) m = emod (emod a m + emod b m) m
+  [@@by
+    intros
+    @> [%use emod_replace_in_sum_left a b m]
+    @> [%use emod_replace_in_sum_right b (emod a m) m]
+    @> auto]
+
+  lemma emod_mul a b m =
+    m <> 0 ==> emod (a * b) m = emod (emod a m * emod b m) m
+  [@@by
+    intros
+    @> [%use emod_replace_in_prod_left a b m]
+    @> [%use emod_replace_in_prod_right b (emod a m) m]
+    @> auto]
+
+theorem emod_one_self k =
+  k <> 0 && abs k <> 1 ==> emod 1 k = 1
+[@@by [%use emod_range 1 k] @> auto]
+
+(* handy: |x * |y|| = |x| * |y| *)
+theorem abs_mul_abs_right x y =
+  abs (x * abs y) = abs x * abs y
+[@@by auto]
+
+(* if e<>0 then any multiple of |e| has remainder 0 mod e *)
+theorem emod_multiple_is_zero k e =
+  e <> 0 ==> emod (k * abs e) e = 0
+[@@by
+  intros
+  @> [%use emod_shift_by_any_multiple 0 e k]
+  @> [%use emod_eq_when_in_range 0 e]
+  @> auto
+]
+
+(* If n is an integer multiple of e (and e <> 0), then n ≡ 0 (mod e). *)
+theorem emod_multiple_via_eq n e k =
+  (e <> 0 && n = e * k) ==> emod n e = 0
+[@@by
+  intros
+  @> [%cases e < 0]
+  @>| [
+    (* Case e < 0: write e = -|e|, so n = (-|e|)*k = (-k)*|e| *)
+    lift_ifs
+    @> [%replace n]                (* use n = e*k *)
+    @> [%use emod_multiple_is_zero (-k) e]
+    @> auto;
+
+    (* Case e >= 0: then |e| = e, so n = k*|e| *)
+    [%replace n]                   (* use n = e*k *)
+    @> [%use emod_multiple_is_zero k e]
+    @> auto
+  ]
+]
+
+(* helper: rewrite |e| as (sign e)*e without case splits *)
+theorem abs_as_sign_times_e e =
+  abs e = (if e < 0 then -1 else 1) * e
+[@@by auto]
+
+(* if e <> 0 and n = e*k then emod n e = 0  *)
+theorem emod_multiple_via_eq n e k =
+  (e <> 0 && n = e * k) ==> emod n e = 0
+[@@by
+  intros
+  @> [%cases e < 0]
+  @>| [
+    lift_ifs @> [%replace n] 
+    @> [%use emod_multiple_is_zero (-k) e] @> auto;
+    [%replace n] @> [%use emod_multiple_is_zero k e] @> auto
+  ]
+]
+
+(* Helpful for setting up a surgical replacement *)
+theorem abs_congr x y =
+  x = y ==> abs x = abs y
+[@@by auto]
+
+(* | |e| * x | = |x| * |e| *)
+theorem abs_mul_abs_left e x =
+  abs (abs e * x) = abs x * abs e
+[@@by auto]
+
+theorem emod_zero_trans n d e =
+  (e <> 0 && d <> 0 && emod n d = 0 && emod d e = 0) ==> emod n e = 0
+[@@by
+  intros
+  @> let qn = qcoef n (abs d) in
+     let qd = qcoef d (abs e) in
+
+  [%use emod_rep_eq n d]         @> [%replace emod n d]
+   @> [%use emod_rep_eq d e]     @> [%replace emod d e]
+   @> [%use emod_multiple_is_zero (qn * (abs qd)) e]
+   @> lift_ifs
+   @> [%use abs_congr d ((abs e) * qd)]
+   @> [%use abs_mul_abs_left e qd]
+   @> [%replace abs d]
+   @> [%replace abs ((abs e) * qd)]
+   @> auto
+  ]
+
+(* Combine a's k-representation with k's divisibility by d. *)
+theorem rep_eq_over_d a k d =
+  (k <> 0 && d <> 0 && emod k d = 0)
+  ==> a = emod a k + (qcoef a (abs k)) * (abs (qcoef k (abs d))) * (abs d)
+[@@by
+  intros
+  @> [%use emod_rep_eq a k]                                    (* a = emod a k + qa*|k| *)
+  @> [%use emod_rep_eq k d]  @> [%replace emod k d]            (* k = qk*|d| *)
+  @> [%use abs_congr k ((qcoef k (abs d)) * (abs d))]          (* |k| = |qk*|d|| *)
+  @> [%use abs_mul_abs_right (qcoef k (abs d)) d]              (* |qk*|d|| = |qk|*|d| *)
+  @> auto
+]
+
+theorem emod_emod a k d =
+  (k <> 0 && d <> 0 && emod k d = 0) ==> emod (emod a k) d = emod a d
+[@@by
+  intros
+  @> [%use rep_eq_over_d a k d]                                       
+  @> [%use emod_shift_by_any_multiple
+         (emod a k) d ( (qcoef a (abs k)) * (abs (qcoef k (abs d))) )]
+  @> auto
+]
+
+end
+
+(* Now, let's organize the mod axioms as *theorems* about emod: *)
+
+module Theorems = struct
+
+  open Euclidean_mod
+
+  theorem mod_range a b =
+    b <> 0 ==> 0 <= a mod b && (a mod b) < abs b
+  [@@by [%use emod_range a b] @> auto]
+
+  theorem mod_mul_right_zero x b =
+    b <> 0 ==> ((x * b) mod b) = 0
+  [@@by [%use Int.mod_eq_emod (x * b) b] 
+     @> [%use emod_mul_right_zero x b] @> auto]
+
+  theorem mod_mul_preserves_zero c x b =
+    b <> 0 && (x mod b) = 0 ==> ((c * x) mod b) = 0
+  [@@by [%use Int.mod_eq_emod x b]
+     @> [%use Int.mod_eq_emod (c * x) b]
+     @> [%use emod_mul_preserves_zero c x b] @> auto]
+
+  theorem mod_one_self k =
+    k <> 0 && abs k <> 1 ==> 1 mod k = 1
+  [@@by [%use Int.mod_eq_emod 1 k] @> 
+        [%use emod_one_self k] @> auto]
+
+  theorem mod_add a b k =
+    k <> 0 ==> (a + b) mod k = ((a mod k) + (b mod k)) mod k
+  [@@by [%use Int.mod_eq_emod (a + b) k]
+     @> [%use Int.mod_eq_emod a k]
+     @> [%use Int.mod_eq_emod b k]
+     @> [%use Int.mod_eq_emod (a mod k + b mod k) k]
+     @> [%use emod_add a b k] @> auto]
+
+  theorem mod_zero_trans n d e =
+    (e <> 0 && d <> 0 && n mod d = 0 && d mod e = 0) ==> n mod e = 0
+  [@@by [%use Int.mod_eq_emod n d]
+     @> [%use Int.mod_eq_emod d e]
+     @> [%use Int.mod_eq_emod n e] 
+     @> [%use emod_zero_trans n d e] @> auto]
+
+  theorem mod_mul a b k =
+    k <> 0 ==> (a * b) mod k = ((a mod k) * (b mod k)) mod k
+  [@@by [%use Int.mod_eq_emod (a * b) k]
+     @> [%use Int.mod_eq_emod a k]
+     @> [%use Int.mod_eq_emod b k]
+     @> [%use Int.mod_eq_emod ((a mod k) * (b mod k)) k]
+     @> [%use emod_mul a b k] @> auto]
+
+  theorem mod_mod a k d = 
+    (k <> 0 && d <> 0 && k mod d = 0) ==> (a mod k) mod d = a mod d
+  [@@by [%use Int.mod_eq_emod k d] 
+     @> [%use Int.mod_eq_emod a k]
+     @> [%use Int.mod_eq_emod (a mod k) d]
+     @> [%use Int.mod_eq_emod a d]
+     @> [%use emod_emod a k d] @> auto]
+
+  theorem mod_recur_pos_neg a b =
+    b > 0 && a < 0 ==> a mod b = (a + b) mod b
+  [@@by [%use Int.mod_eq_emod a b]
+     @> [%use Int.mod_eq_emod (a + b) b] @> auto]
+
+  theorem mod_recur_pos_pos a b =
+    b > 0 && a >= b ==> a mod b = (a - b) mod b
+  [@@by [%use Int.mod_eq_emod a b]
+     @> [%use Int.mod_eq_emod (a - b) b]
+     @> auto]
+
+  lemma mod_self_zero b =
+    b <> 0 ==> (b mod b) = 0
+  [@@by [%use mod_mul_right_zero 1 b]
+     @> auto]
+
+  lemma mod_decreases a b =
+    b > 0 ==> (a mod b) < b
+  [@@by [%use mod_range a b] @> arith]
+
+  lemma mod_sub_right_zero d q p =
+    d <> 0 && q mod d = 0 && p mod d = 0 ==> (q - p) mod d = 0
+  [@@by
+    intros
+    @> [%use mod_mul_preserves_zero (-1) p d]
+    @> [%use mod_add q (-p) d]
+    @> auto
+  ]
+
+end
