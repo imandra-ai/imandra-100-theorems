@@ -438,4 +438,7 @@ module Theorems = struct
     @> auto
   ]
 
+  lemma div_mod a b = b <> 0 ==> a = (a/b)*b + a mod b
+  [@@by auto]
+
 end

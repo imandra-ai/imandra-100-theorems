@@ -1,0 +1,45 @@
+(* Number of subsets of a (finite) set in Imandra, rep'd as lists. 
+   Theorem 52 in the 100 Theorems list. *)
+(* G.Passmore, Imandra *)
+
+(* prepend x to every subset in a family *)
+let rec prepend (x:'a) (sets:'a list list) : 'a list list =
+  match sets with
+  | [] -> []
+  | s::ss -> (x::s) :: prepend x ss
+[@@measure (Ordinal.of_int (List.length sets))] [@@by auto]
+
+(* Powerset of a list: P([]) = [[]]; P(x::xs) = P(xs) @ (map (x::) (P(xs))) *)
+let rec powerset (xs:'a list) : 'a list list =
+  match xs with
+  | [] -> [[]]
+  | x::xt ->
+      let ps = powerset xt in
+      ps @ (prepend x ps)
+[@@measure (Ordinal.of_int (List.length xs))] [@@by auto]
+
+let rec pow (a:int) (n:int) : int =
+  if n <= 0 then 1 else a * pow a (n - 1)
+[@@measure (Ordinal.of_int n)] [@@by auto]
+
+theorem pow_zero a = pow a 0 = 1 [@@by auto]
+
+theorem pow_succ a n =
+  n >= 0 ==> pow a (n + 1) = a * pow a n
+[@@by intros @> auto]
+
+theorem pow2_step n =
+  n >= 0 ==> pow 2 (n + 1) = 2 * pow 2 n
+[@@by intros @> [%use pow_succ 2 n] @> auto]
+
+lemma len_append x y =
+  List.length (x @ y) = List.length x + List.length y
+[@@by auto] [@@rw]
+
+lemma len_prepend x xs =
+  List.length (prepend x xs) = List.length xs
+[@@by auto] [@@rw]
+
+theorem powerset_len xs =
+  List.length (powerset xs) = pow 2 (List.length xs)
+[@@by auto]

@@ -14,9 +14,6 @@ theorem ten_mod3_one =
   (10 mod 3) = 1
 [@@by auto]
 
-lemma div_mod a b = b <> 0 ==> a = (a/b)*b + a mod b
-[@@by auto]
-
 (* Main congruence: sum of digits preserves residue mod 3 *)
 theorem sum_digits_preserves_mod3 n =
   (n >= 0) ==> (n mod 3) = (sum_digits n mod 3)
@@ -29,7 +26,7 @@ theorem sum_digits_preserves_mod3 n =
     (* step: n >= 10 *)
     intros
     (* n = 10*(n/10) + (n mod 10) *)
-    @> [%use div_mod n 10]
+    @> [%use Mod.Theorems.div_mod n 10]
     (* Take both sides mod 3 and distribute *)
     @> [%use Mod.Theorems.mod_add (10 * (n / 10)) (n mod 10) 3]
     @> [%use Mod.Theorems.mod_mul 10 (n / 10) 3]
