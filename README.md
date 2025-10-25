@@ -6,8 +6,9 @@ See the [Top 100 Theorems](https://www.cs.ru.nl/~freek/100/) website for more.
 
 Currently, we have proven:
 
-1. Irrationality of sqrt(2)
-11. Infinitude of Primes
+1\. Irrationality of Sqrt(2)
+11\. Infinitude of Primes
+85\. Divisibility by 3 Rule
 
 More coming soon!
 
