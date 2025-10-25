@@ -323,7 +323,7 @@ theorem square_of_reduced_is_reduced r =
   @> auto
 ]
 
-theorem sqrt2_not_square_of_reduced_normed (r:Rational.t) =
+theorem sqrt2_is_irrational (r:Rational.t) =
   Rational.is_reduced r
   ==> Rational.square r <> Rational.of_int 2
 [@@by
