@@ -10,6 +10,7 @@ Currently, we have proven:
 11\. Infinitude of Primes  
 44\. Binomial Theorem  
 52\. Number of Subsets of a Set  
+58\. Formula for Number of Combinations
 85\. Divisibility by 3 Rule  
 
 

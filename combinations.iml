@@ -1,0 +1,180 @@
+(* Formula for Number of Combinations in Imandra. 
+   Theorem 58 in the 100 Theorems list. *)
+(* G.Passmore, Imandra *)
+
+[@@@import "mod.iml"]
+[@@@import "binomial.iml"]
+
+(* Factorial and basic facts *)
+
+let rec fact (n:int) : int =
+  if n <= 0 then 1 else n * fact (n - 1)
+[@@measure (Ordinal.of_int n)] [@@by auto]
+
+lemma fact_zero = fact 0 = 1 [@@by auto]
+
+lemma fact_succ n =
+  (n > 0) ==> fact n = n * fact (n - 1)
+[@@by intros @> auto]
+
+lemma fact_pos n =
+  (n >= 0) ==> fact n > 0
+[@@by induction () @>| [ intros @> auto; intros @> simplify () @> auto ]]
+
+(* shift on factorial at (n - k) when 0 < k < n *)
+lemma fact_shift_n_minus_k n k =
+  (0 < k && k < n) ==> fact (n - k) = (n - k) * fact ((n - 1) - k)
+[@@by auto]
+
+(* shift on factorial at k when k > 0 *)
+lemma fact_shift_k k =
+  (k > 0) ==> fact k = k * fact (k - 1)
+[@@by
+  intros
+  @> [%use fact_succ k]
+  @> auto
+]
+
+lemma k_plus_n_minus_k n k =
+  (0 <= k && k <= n) ==> k + (n - k) = n
+[@@by intros @> auto]
+
+(* Some edge-case relationships between choose and fact *)
+
+lemma choose_fact_edge_k0 n =
+  (n >= 0) ==> Binomial.choose n 0 * fact 0 * fact (n - 0) = fact n
+[@@by
+  intros
+  @> [%use Binomial.choose_edges n]
+  @> [%use fact_zero]
+  @> auto
+]
+
+lemma choose_fact_edge_kn n =
+  (n >= 0) ==> Binomial.choose n n * fact n * fact (n - n) = fact n
+[@@by
+  intros
+  @> [%use Binomial.choose_edges n]
+  @> [%use fact_zero]
+  @> auto
+]
+
+(* Interior algebra *)
+lemma choose_fact_interior_from_IH n k =
+  (0 < k && k < n
+   &&
+   (* IH_left: at (n-1,k-1) *)
+   Binomial.choose (n - 1) (k - 1) * fact (k - 1) * fact ((n - 1) - (k - 1)) = fact (n - 1)
+   &&
+   (* IH_right: at (n-1,k) *)
+   Binomial.choose (n - 1) k * fact k * fact ((n - 1) - k) = fact (n - 1))
+  ==> Binomial.choose n k * fact k * fact (n - k) = fact n
+[@@by
+  intros
+  @> [%use Binomial.pascal n k]                (* C(n,k) = C(n-1,k-1) + C(n-1,k) *)
+  @> [%use fact_shift_k k]                     (* fact k = k * fact(k-1) *)
+  @> [%use fact_shift_n_minus_k n k]           (* fact(n-k) = (n-k)*fact(n-1-k) *)
+  (* Now the target becomes: 
+     [C(n-1,k-1)+C(n-1,k)] * k! * (n-k)! = n!
+     Expand k! and (n-k)! via the shifts and insert the two IH equalities. *)
+  @> [%use k_plus_n_minus_k (n - 1) (k - 1)]   (* (k-1)+((n-1)-(k-1)) = n-1 *)
+  @> [%use k_plus_n_minus_k (n - 1) k]         (* k+((n-1)-k) = n-1 *)
+  @> [%use fact_succ n]                        (* fact n = n * fact(n-1) *)
+  @> auto
+]
+
+lemma choose_fact_edge_k0 n =
+  (n >= 0) ==> Binomial.choose n 0 * fact 0 * fact (n - 0) = fact n
+[@@by
+  intros
+  @> [%use Binomial.choose_edges n]
+  @> [%use fact_zero]
+  @> auto
+]
+
+lemma choose_fact_edge_kn n =
+  (n >= 0) ==> Binomial.choose n n * fact n * fact (n - n) = fact n
+[@@by
+  intros
+  @> [%use Binomial.choose_edges n]
+  @> [%use fact_zero]
+  @> auto
+]
+
+(* Our main theorem, stated in a division-free form. *)
+
+theorem choose_times_factorials n k =
+  (0 <= k && k <= n)
+   ==> 
+  Binomial.choose n k * fact k * fact (n - k) = fact n
+[@@by
+  induction ()
+  @>| [
+    (* n = 0 *)
+    intros @> simplify () @> auto;
+
+    (* step: prove for n+1, arbitrary k with 0<=k<=n+1 *)
+    intros
+    @> [%cases k = 0]
+    @>| [
+      (* k = 0 *)
+      intros @> [%use choose_fact_edge_k0 (n + 1)] @> auto;
+
+      (* k > 0 *)
+      intros
+      @> [%cases k = n + 1]
+      @>| [
+        (* k = n+1 *)
+        intros @> [%use choose_fact_edge_kn (n + 1)] @> auto;
+
+        (* interior: 0 < k < n+1 *)
+        intros
+        @> [%use choose_fact_interior_from_IH n k]        
+        @> auto
+      ]
+    ]
+  ]
+]
+
+(* If d>0 then (x*d)/d = x and (x*d) mod d = 0 *)
+theorem div_mul_right_exact x d =
+  (d > 0) ==> ((x * d) / d = x)
+[@@by
+  intros
+  @> [%use Mod.Theorems.div_mod (x * d) d]            (* x*d = ((x*d)/d)*d + ((x*d) mod d) *)
+  @> [%use Mod.Theorems.mod_mul_right_zero x d]       (* (x*d) mod d = 0 *)
+  @> auto
+]
+
+(* Congruence of division on the left: if a = b and d>0 then a/d = b/d *)
+theorem div_congr_left a b d =
+  (a = b && d > 0) ==> a / d = b / d
+[@@by auto]
+
+(* Factorials are positive for nonnegative inputs *)
+theorem fact_pos n =
+  (n >= 0) ==> fact n > 0
+[@@by auto]
+
+(* Now, our final version with division! *)
+
+theorem choose_closed_form n k =
+  (0 <= k && k <= n)
+   ==> 
+  Binomial.choose n k = fact n / (fact k * fact (n - k))
+[@@by
+  intros
+  @> let d = fact k * fact (n - k) in
+
+  (* d > 0 because both factorials are positive *)
+     [%use fact_pos k]
+  @> [%use fact_pos (n - k)]
+
+  (* fact n = choose n k * d *)
+  @> [%use choose_times_factorials n k]
+
+  (* Replace numerator by the product, then divide out exact factor d *)
+  @> [%use div_congr_left (fact n) (Binomial.choose n k * d) d]
+  @> [%use div_mul_right_exact (Binomial.choose n k) d]
+  @> auto
+]
