@@ -146,17 +146,12 @@ theorem div_mul_right_exact x d =
   @> auto
 ]
 
-(* Congruence of division on the left: if a = b and d>0 then a/d = b/d *)
-theorem div_congr_left a b d =
-  (a = b && d > 0) ==> a / d = b / d
-[@@by auto]
-
 (* Factorials are positive for nonnegative inputs *)
 theorem fact_pos n =
   (n >= 0) ==> fact n > 0
 [@@by auto]
 
-(* Now, our final version with division! *)
+(* Now, our final version with integer division! *)
 
 theorem choose_closed_form n k =
   (0 <= k && k <= n)
@@ -174,7 +169,6 @@ theorem choose_closed_form n k =
   @> [%use choose_times_factorials n k]
 
   (* Replace numerator by the product, then divide out exact factor d *)
-  @> [%use div_congr_left (fact n) (Binomial.choose n k * d) d]
   @> [%use div_mul_right_exact (Binomial.choose n k) d]
   @> auto
 ]

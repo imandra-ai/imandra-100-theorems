@@ -8,6 +8,7 @@ Currently, we have proven:
 
 1\. Irrationality of √2  
 11\. Infinitude of Primes  
+42\. Sum of the Reciprocals of the Triangular Numbers
 44\. Binomial Theorem  
 52\. Number of Subsets of a Set  
 58\. Formula for Number of Combinations  

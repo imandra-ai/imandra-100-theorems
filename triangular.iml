@@ -1,0 +1,73 @@
+(* Sum of the Reciprocals of the Triangular Numbers in Imandra.
+   Theorem 42 of the 100 Theorems list.
+   
+   G.Passmore, Imandra *)
+
+let _R (n:int) = Real.of_int n
+
+(* Triangular term as a real: 1/T_k = 2/(k(k+1)) *)
+let tri_term (k:int) : Real.t =
+  if k <= 0 then _R 0 else (_R 2) /. (_R (k * (k + 1)))
+
+(* Partial sum S(n) = sum_{k=1..n} 1/T_k *)
+let rec sum_recip_tri (n:int) : Real.t =
+  if n <= 0 then _R 0
+  else tri_term n +. sum_recip_tri (n - 1)
+[@@measure (Ordinal.of_int (max 0 n))]
+[@@by auto]
+
+(* Closed form: S(n) = 2 - 2/(n+1) *)
+let sum_recip_tri_closed (n:int) : Real.t =
+  if n <= 0 then 0.0 else 2.0 -. (2.0 /. (Real.of_int (n + 1)))
+
+(* --- tiny algebra helpers --- *)
+
+(* 2/(k(k+1)) = 2*(1/k - 1/(k+1)) for k>0 *)
+theorem tri_term_telescopes k =
+  (k > 0)
+  ==> tri_term k = (_R 2) *. ( (_R 1) /. (_R k) -. (_R 1) /. (_R (k + 1)) )
+[@@by
+  intros
+  @> simplify ()                     (* unfold tri_term *)
+  @> nonlin ()                       (* pure field algebra over reals *)
+]
+
+(* Closed-form telescoping step:
+   (2 - 2/n) + 2*(1/n - 1/(n+1)) = 2 - 2/(n+1), for n>0 *)
+theorem closed_form_step n =
+  (n > 0)
+  ==> ( (_R 2) -. ((_R 2)/.(_R n)) +. (_R 2) *. ( (_R 1)/.(_R n) -. (_R 1)/.(_R (n+1)) ) )
+      =
+      ( (_R 2) -. ((_R 2)/.(_R (n+1))) )
+[@@by intros @> simplify () @> nonlin ()]
+
+(* Base alignment: both are 0 when n<=0 *)
+theorem sum_recip_tri_closed_base =
+  sum_recip_tri 0 = sum_recip_tri_closed 0
+[@@by simplify () @> auto]
+
+(* --- Main: Sum of reciprocals of triangular numbers --- *)
+theorem sum_of_reciprocals_of_triangular_numbers_real n =
+  sum_recip_tri n = sum_recip_tri_closed n
+[@@by
+  induction ()
+  @>| [
+    (* n <= 0 *)
+    intros
+    @> simplify ()
+    @> auto;
+
+    (* n > 0 *)
+    intros
+    @> [%use tri_term_telescopes n]        (* tri_term n = 2*(1/n - 1/(n+1)) *)
+    @> [%expand sum_recip_tri n]
+    @> simplify ()                         (* IH rewrites S(n-1) to 2 - 2/n; then closed_form_step *)
+    @>| [nonlin () ; nonlin ()]
+  ]
+]
+
+(* Pretty corollary: explicit closed form and the limit 2 *)
+theorem sum_recip_tri_closed_form_real n =
+  sum_recip_tri n 
+   = (if n <= 0 then _R 0 else (_R 2) -. ((_R 2)/.(_R (n+1))))
+[@@by [%use sum_of_reciprocals_of_triangular_numbers_real n] @> auto]
