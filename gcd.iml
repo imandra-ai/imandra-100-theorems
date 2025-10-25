@@ -472,6 +472,80 @@ theorem gcd_square_square_from_coprime a b =
   @> auto
 ]
 
+(* Lift GCD over a,b >= 0 to GCD over Z. *)
+
+module Z = struct
+
+  let gcd_nat = gcd
+
+  let gcd (a:int) (b:int) : int = gcd_nat (abs a) (abs b)
+
+  theorem mod_zero_of_abs d x =
+    (d > 0 && (abs x) mod d = 0) ==> x mod d = 0
+  [@@by
+    intros
+    @> [%cases x >= 0]
+    @>| [
+       (* x ≥ 0 ⇒ abs x = x *)
+       intros @> auto;
+
+       (* x < 0 ⇒ abs x = -x ⇒ (-1 * x) mod d = 0 ⇒ x mod d = 0 *)
+       intros
+       @> [%use mod_mul_preserves_zero (-1) x d]
+       @> [%use mod_mul_preserves_zero (-1) ((-1)*x) d]
+       @> auto
+     ]
+]
+
+  theorem gcd_full_eq_gcd_on_nonneg a b =
+    (a >= 0 && b >= 0) ==> gcd a b = gcd_nat a b
+  [@@by intros @> expand "Z.gcd" @> auto]
+
+  theorem gcd_full_dvd_both_pos a b =
+    (gcd a b > 0)
+    ==> (a mod (gcd a b) = 0 && b mod (gcd a b) = 0)
+  [@@by
+    intros
+    @> [%expand "Z.gcd"]
+    (* First get |a|,|b| mod g = 0 from the proven gcd_sub lemma *)
+    @> [%use gcd_dvd_both_pos (abs a) (abs b)] @> flatten
+    (* Then drop abs on both coordinates *)
+    @> [%use mod_zero_of_abs (gcd_nat (abs a) (abs b)) a]
+    @> [%use mod_zero_of_abs (gcd_nat (abs a) (abs b)) b]
+    @> auto
+  ]
+
+  theorem mod_zero_abs d x =
+    (d > 0 && x mod d = 0) ==> (abs x) mod d = 0
+  [@@by
+    intros
+    @> [%cases x >= 0]
+    @>| [
+         (* x ≥ 0 ⇒ abs x = x *)
+         intros @> auto;
+
+         (* x < 0 ⇒ abs x = -x; from x ≡ 0 (mod d) get (-x) ≡ 0 (mod d) *)
+         intros
+         @> [%use mod_mul_preserves_zero (-1) x d]
+         @> auto
+       ]
+  ]
+
+  theorem gcd_full_absorbs_common_divisor d a b =
+    (d > 0 && a mod d = 0 && b mod d = 0) ==> (gcd a b) mod d = 0
+  [@@by
+    intros
+    @> expand "Z.gcd"
+    (* push divisibility to |a| and |b| *)
+    @> [%use mod_zero_abs d a]
+    @> [%use mod_zero_abs d b]
+    (* apply the subtraction-GCD version you already proved *)
+    @> [%use gcd_absorbs_common_divisor d (abs a) (abs b)]
+    @> auto
+  ]
+
+end
+
 (* Now, onto modular GCD! *)
 
 (*
