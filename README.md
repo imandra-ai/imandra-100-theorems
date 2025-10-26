@@ -7,7 +7,7 @@ See the [Top 100 Theorems](https://www.cs.ru.nl/~freek/100/) website for more.
 Currently, we have proven:
 
 1\. Irrationality of √2  
-3\. Denumerability of the Rationals
+3\. Denumerability of the Rationals  
 11\. Infinitude of Primes  
 42\. Sum of the Reciprocals of the Triangular Numbers  
 44\. Binomial Theorem  
