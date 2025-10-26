@@ -13,6 +13,7 @@ Currently, we have proven:
 44\. Binomial Theorem  
 52\. Number of Subsets of a Set  
 58\. Formula for Number of Combinations  
+74\. Principle of Mathematical Induction  
 85\. Divisibility by 3 Rule  
 
 

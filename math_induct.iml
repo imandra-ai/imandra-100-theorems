@@ -1,0 +1,94 @@
+(* A proof of the Principle of Mathematical Induction in Imandra.
+   Theorem 74 in the 100 Theorems list. *)
+(* G.Passmore, Imandra *)
+
+(* Schematic assumptions of the `base` and `inductive` steps for `prop`. *)
+
+axiom base prop =
+  prop 0
+
+axiom inductive prop n =
+  prop n ==> prop (n+1)
+
+(* Under thease assumptions, we'll prove that `prop n` holds for all n>=0. *)
+
+(* Find a minimal counterexample to prop in range [i..k] *)
+let rec counterexample prop i k =
+  if i > k then -1
+  else if not (prop i) then i
+  else counterexample prop (i+1) k
+[@@measure Ordinal.of_int (k-i)]
+
+lemma holds_before_counterexample prop k i j =
+  j > 0 && i <= j && j < counterexample prop i k
+  ==>
+  prop j
+[@@by auto]
+
+lemma counterexample_is_bad prop i k =
+  i <= k && i >= 0 && k >= 0
+  ==>
+  let c = counterexample prop i k in
+  (c >= i && c <= k)
+  ==>
+  not (prop c)
+[@@by auto]
+
+lemma counterexample_neg1_prefix prop i k =
+  i >= 0 && k > i && counterexample prop i k = -1
+  ==> counterexample prop i (k-1) = -1
+[@@by auto]
+
+lemma counterexample_outcome prop i k =
+  i >= 0 && k >= 0 && i <= k
+  ==> let c = counterexample prop i k in
+      (c = -1) || (c >= i && c <= k && not (prop c))
+[@@by auto]
+
+(* If no counterexample exists in [0..k], then prop k. *)
+lemma counterexample_neg1_means_k_holds prop j k =
+  (k >= 0 && j = 0 && counterexample prop j k = -1) ==> prop k
+[@@by
+  induction ()
+  @>| [
+    (* k = 0 *)
+    intros @> esimp @> [%use base prop] @> auto;
+
+    (* k > 0 *)
+    intros
+    @> esimp
+    @> [%use counterexample_neg1_prefix prop 0 k]  (* needs k>0 *)
+    @> [%replace j]
+    @> simplify ()
+    @> [%replace counterexample prop 0 (-1+k)]
+    @> [%use inductive prop (k-1)]
+    @> [%use holds_before_counterexample prop k 0 (k-1)]
+    @> auto
+  ]
+]
+
+(* Our finale, the Principle of Mathematical Induction! *)
+
+theorem induction prop k =
+  k >= 0 ==> prop k
+[@@by
+  intros
+  @> [%use base prop]
+  @> let c = counterexample prop 0 k in
+  [%use counterexample_outcome prop 0 k]
+  @> [%cases c = -1, c >= 1]
+  @>| [
+       (* c = -1: no counterexample *)
+       simplify ()
+       @> [%use counterexample_neg1_means_k_holds prop 0 k]
+       @> auto;
+
+       (* c >= 1: contradiction from minimal counterexample *)
+       [%use counterexample_is_bad prop 0 k]        (* gives: not (prop c) *)       
+       @> [%use holds_before_counterexample prop k 0 (c-1)]
+       @> [%use inductive prop (c-1)] 
+       @> simplify ();
+
+       (* trivial from counterexample bounds *)
+       arith]
+]
