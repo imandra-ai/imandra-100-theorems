@@ -218,6 +218,14 @@ module Euclidean_mod = struct
     @> [%use emod_zero_self m]
     @> auto]
 
+  lemma emod_mul_left_zero x m =
+    m <> 0 ==> emod (x * m) m = 0
+  [@@by
+    intros
+    @> [%use emod_mul_right_zero x m]
+    @> auto]
+
+
   lemma emod_mul_preserves_zero c x m =
     (m <> 0 && emod x m = 0) ==> emod (c * x) m = 0
   [@@by
@@ -350,6 +358,10 @@ theorem emod_emod a k d =
   @> auto
 ]
 
+theorem zero_emod d =
+  d <> 0 ==> 0 mod d = 0
+ [@@by auto]
+
 end
 
 (* Now, let's organize the mod axioms as *theorems* about emod: *)
@@ -361,6 +373,11 @@ module Theorems = struct
   theorem mod_range a b =
     b <> 0 ==> 0 <= a mod b && (a mod b) < abs b
   [@@by [%use emod_range a b] @> auto]
+
+  theorem mod_mul_left_zero x b =
+    b <> 0 ==> ((b * x) mod b) = 0
+  [@@by [%use Int.mod_eq_emod (x * b) b] 
+     @> [%use emod_mul_left_zero x b] @> auto]
 
   theorem mod_mul_right_zero x b =
     b <> 0 ==> ((x * b) mod b) = 0
@@ -438,6 +455,21 @@ module Theorems = struct
     @> auto
   ]
 
+  lemma mod_idem a m =
+    m <> 0 ==> (a mod m) mod m = a mod m
+  [@@by
+    intros
+    @> [%use emod_idem a m]
+    @> [%use Int.mod_eq_emod a m]
+    @> [%use Int.mod_eq_emod (a mod m) m]
+    @> auto]
+
+   lemma zero_mod d =
+     d <> 0 ==> 0 mod d = 0
+    [@@by [%use zero_emod d]
+       @> [%use Int.mod_eq_emod 0 d]
+       @> exact]
+  
   lemma div_mod a b = b <> 0 ==> a = (a/b)*b + a mod b
   [@@by auto]
 
