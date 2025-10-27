@@ -8,6 +8,7 @@ Currently, we have proven:
 
 1\. Irrationality of √2  
 3\. Denumerability of the Rationals  
+4\. Pythagorean Theorem  
 11\. Infinitude of Primes  
 42\. Sum of the Reciprocals of the Triangular Numbers  
 44\. Binomial Theorem  
