@@ -15,7 +15,7 @@ Currently, we have proven:
 52\. Number of Subsets of a Set  
 58\. Formula for Number of Combinations  
 60\. Bezout's Theorem  
-69\. Greatest Common Divisor Algorithm
+69\. Greatest Common Divisor Algorithm  
 74\. Principle of Mathematical Induction  
 80\. The Fundamental Theorem of Arithmetic  
 85\. Divisibility by 3 Rule  
