@@ -12,7 +12,7 @@ axiom base prop =
 axiom inductive prop n =
   n >= 0 && prop n ==> prop (n+1)
 
-(* Under thease assumptions, we'll prove that `prop n` holds for all n>=0. *)
+(* Under these assumptions, we'll prove that `prop n` holds for all n>=0. *)
 
 (* Find a minimal counterexample to prop in range [i..k]. *)
 

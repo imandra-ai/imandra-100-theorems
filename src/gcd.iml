@@ -93,15 +93,15 @@ theorem gcd_dvd_both_pos a b =
 ]
 
 theorem gcd_dvd_left_pos a b =
-  (gcd a b > 0) ==> a mod (gcd a b) = 0
+  gcd a b > 0 ==> a mod (gcd a b) = 0
 [@@by intros @> [%use gcd_dvd_both_pos a b] @> auto]
 
 theorem gcd_dvd_right_pos a b =
-  (gcd a b > 0) ==> b mod (gcd a b) = 0
+  gcd a b > 0 ==> b mod (gcd a b) = 0
 [@@by intros @> [%use gcd_dvd_both_pos a b] @> auto]
 
 theorem gcd_absorbs_common_divisor d a b =
-  (d > 0 && a mod d = 0 && b mod d = 0) ==> (gcd a b) mod d = 0
+  d > 0 && a mod d = 0 && b mod d = 0 ==> (gcd a b) mod d = 0
 [@@by
   induction ()
   @>| [

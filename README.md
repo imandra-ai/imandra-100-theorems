@@ -299,10 +299,10 @@ theorem gcd_remainder_step a b =
   a >= 0 && b > 0 ==> gcd a b = gcd b (a mod b)
 
 theorem gcd_dvd_both_pos a b =
-  gcd a b > 0 ==> (a mod (gcd a b) = 0 && b mod (gcd a b) = 0)
+  gcd a b > 0 ==> a mod (gcd a b) = 0 && b mod (gcd a b) = 0
 
 theorem gcd_absorbs_common_divisor d a b =
-  (d > 0 && a mod d = 0 && b mod d = 0) ==> (gcd a b) mod d = 0
+  d > 0 && a mod d = 0 && b mod d = 0 ==> (gcd a b) mod d = 0
 ```
 </details>
 
