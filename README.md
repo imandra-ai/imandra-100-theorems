@@ -14,6 +14,7 @@ Currently, we have proven:
 52\. Number of Subsets of a Set  
 58\. Formula for Number of Combinations  
 74\. Principle of Mathematical Induction  
+80\. The Fundamental Theorem of Arithmetic  
 85\. Divisibility by 3 Rule  
 
 
@@ -21,4 +22,4 @@ More coming soon!
 
 # Contact
 
-Grant Passmore, grant@imandra.ai
+Grant Passmore (grant@imandra.ai), Imandra

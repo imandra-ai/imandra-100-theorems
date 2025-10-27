@@ -1,0 +1,599 @@
+(* A proof of the Fundamental Theorem of Arithmetic in Imandra.
+   Theorem 80 in the 100 Theorems list. *)
+(* G.Passmore, Imandra *)
+
+[@@@import GCD, "gcd.iml"]
+[@@@import Inf_primes, "inf_primes.iml"]
+[@@@import Mod, "mod.iml"]
+
+open GCD
+open Inf_primes
+open Mod.Theorems
+
+(* Any positive divisor of a prime p is either 1 or p. *)
+lemma prime_divisor_is_1_or_p p d =
+  (p >= 2 && small_divisor_from 2 p = p && d > 0 && p mod d = 0)
+  ==> (d = 1) || (d = p)
+[@@by
+  intros
+  @> [%cases d < 2]
+  @>| [
+       (* if 0 < d < 2, then d = 1 *)
+       auto;
+
+       (* else d >= 2; rule out 2 <= d < p by minimality, so d >= p *)
+       intros
+       @> [%cases d < p]
+       @>| [
+            (* 2 <= d < p contradicts minimality of sd 2 p = p *)
+            intros
+            @> [%use sd_strictly_minimal p d]
+            @> auto;
+
+            (* now d >= p; with p mod d = 0 and d>0 we get d <= p via div_mod ⇒ d = p *)
+            intros
+            @> [%use div_mod p d]
+            @> nonlin ()
+          ]
+     ]
+]
+
+theorem prime_not_divides_implies_gcd1 p a =
+  (p >= 2 && small_divisor_from 2 p = p && a >= 0 && not (a mod p = 0))
+  ==> gcd p a = 1
+[@@by
+  intros
+  @> let g = gcd p a in
+
+  (* gcd p a > 0 since p>0, a>=0, not both zero *)
+  [%use gcd_pos_from_nonneg_not_both_zero p a]
+
+  (* gcd divides both, in the nat library this requires gcd>0 *)
+  @> [%use gcd_dvd_both_pos p a]
+  @> esimp                (* gives: p mod g = 0  and  a mod g = 0 *)
+
+  (* For a prime p, any positive divisor g of p is 1 or p *)
+  @> [%use prime_divisor_is_1_or_p p g]
+  @> esimp                (* (g = 1) || (g = p) *)
+
+  (* g = p would imply a mod p = 0 via "a mod g = 0", contradicting the hypothesis *)
+  @> [%cases g = 1]
+  @>| [
+       auto;
+       intros
+       @> simplify ()
+       @> [%replace g]    (* rewrite with g = p *)
+       @> auto
+     ]
+]
+
+(* Congruence of mod w.r.t. equality of arguments *)
+lemma mod_congr_arg p x y =
+  x = y ==> (x mod p) = (y mod p)
+[@@by auto]
+
+(* Algebraic reshaping: b*(u*p) + v*(a*b) = ((u*p + v*a) * b) *)
+lemma sum_to_factored u v a b p =
+  (b * (u * p)) + (v * (a * b)) = ((u * p) + (v * a)) * b
+[@@by arith]
+
+(* From two zero-mod terms, the factored product is also zero-mod. *)
+lemma two_zero_terms_give_factored_zero p a b u v =
+  (p <> 0)
+  && (((b * (u * p)) mod p) = 0)
+  && (((v * (a * b)) mod p) = 0)
+  ==> ((((u * p) + (v * a)) * b) mod p) = 0
+[@@by
+  intros
+  (* First: (b*(u*p) + v*(a*b)) mod p = 0 by mod_add *)
+  @> [%use mod_sum_zero_from_terms p (b * (u * p)) (v * (a * b))]
+  (* Convert the LHS argument to the factored form by congruence on mod *)
+  @> [%use sum_to_factored u v a b p]
+  @> [%use mod_congr_arg p ((b * (u * p)) + (v * (a * b))) (((u * p) + (v * a)) * b)]
+  @> auto
+]
+
+lemma bezout_push_mod_to_b p a b u v =
+  (p <> 0)
+  && (((u * p) + (v * a)) = 1)
+  && (((b * (u * p)) mod p) = 0)
+  && (((v * (a * b)) mod p) = 0)
+  ==> (b mod p) = 0
+[@@by
+  intros
+  (* Get ((((u*p)+(v*a))*b) mod p) = 0 from the two zero-mod terms *)
+  @> [%use two_zero_terms_give_factored_zero p a b u v]
+  (* Turn ((u*p + v*a) * b) into b via Bézout, then mod-congruence *)
+  @> [%use mod_congr_arg p (((u * p) + (v * a)) * b) b]
+  @> [%subgoal (((u * p) + (v * a)) * b) = b] @>| [
+        (* Rewrite (u*p + v*a) to 1 and simplify *)
+        [%replace ((u * p) + (v * a))] @> auto
+        @> esimp @> auto;
+
+        auto
+     ]
+]
+
+theorem euclid_prime_divides_mul p a b =
+  (is_prime p && divides p (a*b) && a >= 0)
+  ==> (divides p a) || (divides p b)
+[@@by
+  intros
+  @> [%simp_only divides]   (* premise: p<>0 && (a*b) mod p = 0 *)
+  @> [%cases a mod p = 0]
+  @>| [
+       (* left disjunct: p | a *)
+       auto;
+
+       (* else branch: a mod p <> 0 *)
+       intros
+       @> [%use prime_not_divides_implies_gcd1 p a]
+       @> let u,v = (GCD.bezout_sub p a) in
+          [%subgoal (gcd p a) = 1]
+       @>| [
+            (* Bézout: u*p + v*a = 1 *)
+            [%use gcd_eq_one_iff_bezout p a]
+
+            (* build the two zero-mod terms needed by bezout_push_mod_to_b *)
+            @> [%use mod_mul_right_zero u p]          (* (u*p) mod p = 0 *)
+            @> [%use mod_mul_preserves_zero b (u*p) p] (* (b*(u*p)) mod p = 0 *)
+            @> [%use mod_mul_preserves_zero v (a*b) p] (* (v*(a*b)) mod p = 0 *)
+
+            (* push Bézout to conclude b ≡ 0 (mod p) *)
+            @> [%use bezout_push_mod_to_b p a b u v]
+            @> auto                                   (* right disjunct: p<>0 ∧ b mod p = 0 *)
+            ;
+
+            [%use prime_not_divides_implies_gcd1 p a]         (* gives gcd p a = 1 *)
+            @> [%use gcd_eq_one_iff_bezout p a]
+            @> [%use mod_mul_right_zero u p]                    (* (u*p) mod p = 0 *)
+            @> [%use mod_mul_preserves_zero b (u*p) p]          (* (b*(u*p)) mod p = 0 *)
+            @> [%use mod_mul_preserves_zero v (a*b) p]          (* (v*(a*b)) mod p = 0, from (a*b) mod p = 0 *)
+            @> [%use bezout_push_mod_to_b p a b u v]            (* b mod p = 0 *)
+            @> auto                                             (* concludes right disjunct *)
+
+            ]
+     ]
+]
+
+theorem euclid_prime_divides_mul_mod p a b =
+  (is_prime p && ((a*b) mod p = 0) && a >= 0)
+  ==> (a mod p = 0) || (b mod p = 0)
+[@@by
+  [%use euclid_prime_divides_mul p a b]
+  @> auto
+]
+
+(* Now, some product list machinery *)
+
+let rec prod_list xs =
+  match xs with
+  | [] -> 1
+  | x::xs -> x * prod_list xs
+
+let rec all_prime xs =
+  match xs with
+  | [] -> true
+  | x::xs -> is_prime x && all_prime xs
+
+lemma prod_list_append xs ys =
+  prod_list (xs @ ys) = prod_list xs * prod_list ys
+[@@by auto] [@@rw]
+
+let rec remove_one x xs =
+  match xs with
+  | [] -> []
+  | h::t -> if x = h then t else h :: remove_one x t
+
+lemma prod_list_mem_remove_one x xs =
+  List.mem x xs
+   ==> 
+  prod_list xs = x * prod_list (remove_one x xs)
+[@@by auto]
+
+lemma prod_list_cons h t =
+  prod_list (h::t) = h * prod_list t
+[@@by auto] [@@rw]
+
+lemma all_prime_tl_of_nonempty xs =
+  (xs <> [] && all_prime xs) ==> all_prime (List.tl xs)
+[@@by auto]
+
+lemma mem_of_mem_tl x xs =
+  (xs <> [] && List.mem x (List.tl xs)) ==> List.mem x xs
+[@@by auto]
+
+lemma prime_of_ge2_sd q =
+  (q >= 2 && small_divisor_from 2 q = q) ==> is_prime q
+[@@by auto]
+
+lemma all_prime_tl_of_nonempty xs =
+  (xs <> [] && all_prime xs) ==> all_prime (List.tl xs)
+[@@by auto]
+
+lemma mem_hd_is_member xs =
+  xs <> [] ==> List.mem (List.hd xs) xs
+[@@by auto]
+
+(* product splits over hd/tl on nonempty lists *)
+lemma prod_list_hd_tl xs =
+  xs <> [] ==> prod_list xs = (List.hd xs) * (prod_list (List.tl xs))
+[@@by auto]
+
+(* If p and q are prime and p | q, then q = p. *)
+theorem prime_dvd_prime_eq p q =
+  (is_prime p && is_prime q && (q mod p) = 0) ==> q = p
+[@@by
+  intros
+  (* For a prime q, any positive divisor d of q is 1 or q; take d := p. *)
+  @> [%use prime_divisor_is_1_or_p q p]
+  @> auto
+]
+
+theorem prime_mem_if_divides_prod p xs =
+  (is_prime p && all_prime xs && divides p (prod_list xs))
+  ==> List.mem p xs
+[@@by
+  induction ()
+  @>| [
+       [%use mod_one_self p]
+    @> [%use euclid_prime_divides_mul_mod p (List.hd xs) (prod_list xs)]
+    @> auto
+    ;
+
+    intros
+    @> [%use euclid_prime_divides_mul_mod p (List.hd xs) (prod_list xs)]
+    @> [%use all_prime_tl_of_nonempty xs]   
+    @> [%use mem_of_mem_tl p xs]
+    @> simplify ()
+    @> swap (-2) @> swap (-2)
+    @> [%use prime_of_ge2_sd p]                                (* from H1,H2: is_prime p *)
+
+    @> [%use prod_list_hd_tl xs]                               (* from H0: prod_list xs = hd xs * prod_list (tl xs) *)
+    @> [%use euclid_prime_divides_mul_mod p (List.hd xs) (prod_list (List.tl xs))]
+    @> [%use prime_of_ge2_sd (List.hd xs)]                     (* from H5,H6: is_prime (List.hd xs) *)
+    @> [%use prime_dvd_prime_eq p (List.hd xs)]                (* primes and (List.hd xs) mod p = 0 ⇒ List.hd xs = p *)
+
+    @> [%use mem_hd_is_member xs]                              (* is-a[::] xs ⇒ List.mem (List.hd xs) xs *)
+    @> auto
+
+  ]
+]
+
+(* Arithmetic interlude -- some facts to support recursion
+   with division. Soon I'll separate into a separate library. *)
+
+lemma two_q_ge_q_plus_one q =
+  (q >= 1) ==> (2*q >= q + 1)
+[@@by nonlin ()]
+
+lemma abs_id_nonneg b =
+  (b >= 0) ==> (Mod.abs b) = b
+[@@by auto]
+
+lemma ge1_of_ge0_ne0 x =
+  (x >= 0 && not (x = 0)) ==> x >= 1
+[@@by arith]
+
+lemma mul_mono_right_nonneg q x y =
+  (q >= 0 && x >= y) ==> q * x >= q * y
+[@@by nonlin ()]
+
+lemma two_q_ge_q_plus_one q =
+  (q >= 1) ==> (2*q >= q + 1)
+[@@by arith]
+
+lemma ge_succ_implies_lt x y =
+  (x >= y + 1) ==> (y < x)
+[@@by auto]
+
+lemma ge_of_eq_plus_nonneg a x r =
+  (a = x + r && r >= 0) ==> a >= x
+[@@by arith]
+
+lemma ge_trans2 a b c =
+  (a >= b && b >= c) ==> a >= c
+[@@by arith]
+
+lemma le_from_bounds a x y =
+  (a >= x && a <= y) ==> x <= y
+[@@by arith]
+
+lemma le_self_times_two_imp_nonpos q =
+  (2*q <= q) ==> q <= 0
+[@@by arith]
+
+(* This one is shockingly hard, but crucial! *)
+lemma div_smaller a b =
+  (a > 0 && b >= 2) ==> (a / b < a)
+[@@by
+  intros
+  (* a = (a/b)*b + (a mod b), with 0 ≤ (a mod b) < b and b ≥ 2 *)
+  @> [%use div_mod a b]
+  @> [%use mod_range a b]
+  (* From a = q*b + r and r ≥ 0 we get a ≥ q*b; with b ≥ 2, a ≥ 2*q ⇒ q ≤ a/2 < a *)
+  @> [%use two_q_ge_q_plus_one (a/b)]
+  @> [%use div_pos a b]
+  @> [%cases (a/b)=0]
+  @>| [auto; 
+
+       [%use abs_id_nonneg b]
+       @> [%use ge1_of_ge0_ne0 (a/b)]
+       @> [%use mul_mono_right_nonneg (a/b) b 2]
+       @> [%use two_q_ge_q_plus_one (a/b)]
+       @> [%use ge_succ_implies_lt a (a/b)]
+       @> [%use ge_of_eq_plus_nonneg a (b * (a / b)) (a mod b)]    (* from H5,H1: a ≥ b*(a/b) *)
+       @> [%use ge_trans2 a (b * (a / b)) (2 * (a / b))]           (* with H9: a ≥ 2*(a/b) *)
+       @> generalize [%t (a/b)] "q"
+       @> simplify () @> arith
+  ]
+]
+
+(* Now, let's factor some natural numbers into products of primes! *)
+
+let rec prime_factors (n:int) : int list =
+  if n < 2 then []
+  else
+    let d = small_divisor_from 2 n in
+    if d = n then [n]
+    else
+      let q = n / d in
+      (prime_factors d) @ (prime_factors q)
+[@@measure Ordinal.of_int n]
+[@@by [%use sd_le_n 2 n] 
+   @> [%use sd_idempotent n]
+   @> [%use small_divisor_ge2 n]
+   @> [%use small_divisor_divides n]
+   @> [%use div_mod n (small_divisor_from 2 n)]
+   @> [%use div_smaller n (small_divisor_from 2 n)]
+   @> simplify () @> arith
+]
+
+eval prime_factors 100
+
+lemma sd_bundle n =
+  n >= 2
+  ==>
+  let d = small_divisor_from 2 n in
+  (2 <= d) && (n mod d = 0) && (d = n || is_prime d)
+[@@by
+  intros
+  @> [%use small_divisor_ge2 n]       (* 2 ≤ d *)
+  @> [%use small_divisor_divides n]   (* d | n *)
+  @> esimp
+  @> [%cases small_divisor_from 2 n = n] 
+     @>| [auto; 
+          simplify ()
+          @> [%use sd_idempotent n]
+          @> auto]
+]
+
+lemma all_prime_append xs ys =
+  (all_prime (xs @ ys)) = (all_prime xs && all_prime ys)
+[@@by auto] [@@rw]
+
+lemma ge1_of_ge0_ne0 x =
+  (x >= 0 && not (x = 0)) ==> x >= 1
+[@@by auto]
+
+lemma ge2_of_ge1_ne1 x =
+  (x >= 1 && not (x = 1)) ==> x >= 2
+[@@by nonlin ()]
+
+lemma q_ne_one_from_ne n d q =
+  (n = q*d && not (d = n)) ==> not (q = 1)
+[@@by auto]
+
+lemma all_prime_append xs ys =
+  (all_prime (xs @ ys)) = (all_prime xs && all_prime ys)
+[@@by auto] [@@rw]
+
+lemma prime_factors_are_prime n =
+  n >= 2 ==> all_prime (prime_factors n) 
+[@@by auto] [@@rw]
+
+lemma g_bigger_progress n = 
+  let m = small_divisor_from 2 n in
+  ((not (m >= 2)) 
+   || (not ((prod_list (prime_factors (n / m))) 
+             = (n / m))) 
+   || (not (2 <= n)) 
+   || (not (2 <= m)) 
+   || (not ((n mod m) = 0)) 
+   || (not ((n / m) >= 0)) 
+   || (not ((Inf_primes.small_divisor_from 2 m) = m)) 
+   || ((prod_list (prime_factors n)) = n)) 
+[@@by auto]
+[@@disable small_divisor_from]
+
+theorem prime_factors_correct n =
+  n >= 2 ==> all_prime (prime_factors n) && prod_list (prime_factors n) = n
+[@@by
+  induction ()
+  @>| [
+    auto;
+
+    intros
+    @> esimp
+    @> [%use sd_bundle n]
+    @> let d = small_divisor_from 2 n in
+       [%cases d = n]
+    @>| [
+         (* n is prime *)
+         esimp @> auto;
+
+         (* n = d * q with 2 ≤ d < n and q = n/d ≥ 2, q < n *)
+         intros
+         @> let q = n / d in
+         [%subgoal d >= 2 && d < n && q >= 2 && q < n && n = d*q]
+         @>| [
+              auto;
+              esimp
+              @> [%use prod_list_append (prime_factors d) (prime_factors q)]
+              @> [%use div_pos n d]                         (* q >= 0, since n>=0 and d>0 *)
+              @> [%use ge1_of_ge0_ne0 q]                    (* q >= 1, as q ≠ 0 follows from n = q*d and n>=2,d>=2 *)
+              @> [%use q_ne_one_from_ne n d q]              (* from n = q*d and d ≠ n ⇒ q ≠ 1 *)
+              @> [%use all_prime_append (prime_factors d) (prime_factors q)]
+              @> let d = Inf_primes.small_divisor_from 2 n in
+                 let q = n / d in
+                 esimp
+              @> [%use all_prime_append (prime_factors d) (prime_factors q)]
+              @> [%use prime_factors_are_prime n]
+              @> [%use g_bigger_progress n]
+              @> simplify ()
+            ]
+       ]
+  ]
+] [@@disable small_divisor_from, all_prime, prime_factors]
+
+lemma mul_left_cancel_nonzero k x y =
+  (k <> 0 && k*x = k*y) ==> x = y
+[@@by nonlin()]
+
+lemma prime_nonzero p =
+  is_prime p ==> p <> 0
+
+theorem unique_prime_factorization_step p xs ys =
+  is_prime p && all_prime xs && all_prime ys
+  && prod_list (p :: xs) = prod_list ys
+  ==> 
+  List.mem p ys
+  && prod_list xs = prod_list (remove_one p ys)
+[@@by
+  intros
+  @> esimp
+  (* p | prod_list ys *)
+  @> [%subgoal divides p (prod_list ys)]
+  @>| [
+       (* find p in ys using Euclid-peel lemma *)
+       [%use prime_mem_if_divides_prod p ys]           (* H0, H2, H4 *)
+
+       (* pull down one copy of p from prod_list ys *)
+       @> [%use prod_list_mem_remove_one p ys]           
+
+       (* rewrite prod_list (p::xs) to p * prod_list xs *)
+       @> [%use prod_list_cons p xs]
+
+       (* cancel p on both sides to get the tail products equal *)
+       @> [%use prime_nonzero p]                        
+       @> [%use mul_left_cancel_nonzero p (prod_list xs)
+                (prod_list (remove_one p ys))]
+
+       @> auto
+     ;
+          [%use prod_list_cons p xs]                                  (* prod_list (p::xs) = p * prod_list xs *)
+       @> [%use mod_congr_arg p (prod_list ys) (p * prod_list xs)]    (* from H3: (prod_list ys) mod p = (p*prod_list xs) mod p *)
+       @> [%subgoal (p * prod_list xs) = (prod_list xs * p)]
+       @>| [                                               
+            [%use mod_congr_arg p (p * prod_list xs) (prod_list xs * p)]
+            @> [%use prime_nonzero p]                                 (* is_prime p ⇒ p <> 0 *)
+            @> [%use mod_mul_right_zero (prod_list xs) p]             (* ((prod_list xs)*p) mod p = 0 *)
+            @> [%simp_only Inf_primes.divides]
+            @> auto
+            ;
+            auto
+           ]
+  ]  
+]
+[@@disable all_prime, prod_list]
+
+lemma all_prime_remove_one p ys =
+  all_prime ys ==> all_prime (remove_one p ys)
+[@@by auto] [@@rw]
+
+(* List permutation as a multiset equality predicate *)
+let rec permutation (xs:int list) (ys:int list) : bool =
+  match xs with
+  | [] -> ys = []
+  | x::xs' -> List.mem x ys && permutation xs' (remove_one x ys)
+[@@by auto]
+
+lemma all_prime_tl_of_nonempty xs =
+  (xs <> [] && all_prime xs) ==> all_prime (List.tl xs)
+[@@by auto]
+
+lemma hd_ge2_of_all_prime_nonempty xs =
+  (xs <> [] && all_prime xs) ==> (List.hd xs) >= 2
+[@@by auto]
+
+lemma prod_list_ge_one_of_all_prime xs =
+  all_prime xs ==> prod_list xs >= 1
+[@@by
+     induction ()
+   @>| [auto;
+        intros
+        @> [%norm prod_list xs]
+        @> [%use hd_ge2_of_all_prime_nonempty xs]
+        @> [%use all_prime_tl_of_nonempty xs]
+        @> lift_ifs
+            @>| [auto; nonlin (); auto]
+     ]
+]
+
+lemma prime_prod_list_one_is_empty xs =
+  (all_prime xs && prod_list xs = 1) ==> xs = []
+[@@by
+  induction ()
+  @>| [
+    (* base *)
+    esimp @> auto;
+
+    (* step: xs is nonempty, derive a contradiction *)
+    intros
+    @> esimp
+    @> [%use prod_list_hd_tl xs]                     (* prod_list xs = hd xs * prod_list (tl xs) *)
+    @> [%use hd_ge2_of_all_prime_nonempty xs]        (* hd xs ≥ 2 *)
+    @> [%use all_prime_tl_of_nonempty xs]            (* all_prime (tl xs) *)
+    @> [%use prod_list_ge_one_of_all_prime (List.tl xs)]  (* prod_list (tl xs) ≥ 1 *)
+    @> nonlin ()                                     (* hd*prod_tl ≥ 2 *)
+    @> auto                                          (* contradicts prod_list xs = 1 *)
+  ]
+]
+[@@disable prod_list]
+
+(* And at last, prime factorizations are unique! *)
+
+theorem unique_prime_factorization xs ys =
+  all_prime xs && all_prime ys && prod_list xs = prod_list ys
+  ==> permutation xs ys
+[@@by
+  induction ()
+  @>| [
+    [%use prime_prod_list_one_is_empty ys]
+    @> auto;
+
+    intros
+    @> esimp
+    @> [%use unique_prime_factorization_step (List.hd xs) xs ys]
+    @> [%use all_prime_remove_one (List.hd xs) ys]
+    @> let p = List.hd xs in
+       let t = List.tl xs in
+       esimp
+
+       (* 1) Head is prime; tails are prime *)
+
+       @> [%use all_prime_tl_of_nonempty xs]             (* all_prime t, from H0,H3 *)
+
+       (* 2) Turn H2 into p | prod_list ys *)
+
+       @> [%use prod_list_hd_tl xs]                      (* prod_list xs = p * prod_list t *)
+       @> [%use mod_congr_arg p (prod_list ys) (p * prod_list t)]
+       @> [%use prime_nonzero p]                         (* is_prime p ⇒ p <> 0 *)
+       @> [%use mod_mul_right_zero (prod_list t) p]      (* (prod_list t * p) mod p = 0 *)
+    
+       (* 3) Peel membership of p from ys *)
+    
+       @> [%use prime_mem_if_divides_prod p ys]          (* needs is_prime p, all_prime ys, divides … *)
+    
+       (* 4) Pull one p out of prod_list ys, and match tail products *)
+    
+       @> [%use prod_list_mem_remove_one p ys]           (* prod_list ys = p * prod_list (remove_one p ys) *)
+       @> [%use prod_list_hd_tl xs]                      (* prod_list xs = p * prod_list t *)
+       @> [%use mul_left_cancel_nonzero p (prod_list t) (prod_list (remove_one p ys))]
+
+       (* Now we have: prod_list t = prod_list (remove_one p ys) *)
+
+       @> simplify ()
+       @>>| [%replace (prod_list ys)] @> auto
+  ]
+]
