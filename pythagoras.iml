@@ -32,13 +32,13 @@ let dot (u : point) (v : point) : real =
   let open Real in
   u.x * v.x + u.y * v.y
 
-(* Squared norm and squared distance (no sqrt) *)
 let norm2 (u : point) : real = dot u u
 
 let dist2 (p : point) (q : point) : real =
   norm2 (sub p q)
 
 (* Right angle at c means (a - c) · (b - c) = 0 *)
+
 let right_at (c : point) (a : point) (b : point) : bool =
   let open Real in
   dot (sub a c) (sub b c) = 0.0
