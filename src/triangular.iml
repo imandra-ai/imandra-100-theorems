@@ -52,7 +52,7 @@ lemma sum_recip_tri_closed_base =
 
 (* Main theorem: Sum of reciprocals of triangular numbers *)
 
-theorem sum_of_reciprocals_of_triangular_numbers_real n =
+theorem sum_of_reciprocals_of_triangular_numbers n =
   sum_recip_tri n = sum_recip_tri_closed n
 [@@by
   induction ()
@@ -73,7 +73,8 @@ theorem sum_of_reciprocals_of_triangular_numbers_real n =
 
 (* Nice corollary: explicit closed form and the limit 2! *)
 
-theorem sum_recip_tri_closed_form_real n =
-  sum_recip_tri n 
-   = (if n <= 0 then 0.0 else 2.0 -. (2.0 /. (Real.of_int (n+1))))
-[@@by [%use sum_of_reciprocals_of_triangular_numbers_real n] @> auto]
+theorem sum_recip_tri_closed_form n =
+  n >= 0
+  ==>
+  sum_recip_tri n = 2.0 -. (2.0 /. (Real.of_int (n+1)))
+[@@by [%use sum_of_reciprocals_of_triangular_numbers n] @> auto]

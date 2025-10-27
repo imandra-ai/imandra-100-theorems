@@ -18,7 +18,7 @@ theorem ten_mod3_one =
 
 (* Main congruence: sum of digits preserves residue mod 3 *)
 theorem sum_digits_preserves_mod3 n =
-  (n >= 0) ==> (n mod 3) = (sum_digits n mod 3)
+  n >= 0 ==> n mod 3 = sum_digits n mod 3
 [@@by
   induction ()
   @>| [

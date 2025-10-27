@@ -210,7 +210,9 @@ let rec bezout_sub (a:int) (b:int) : int * int =
 [@@measure (Ordinal.of_int (a + b))]
 [@@by auto]
 
-theorem bezout_sub_correct a b =
+(* Bezout's Theorem! *)
+
+theorem bezout a b =
   let (u,v) = bezout_sub a b in
   u*a + v*b = gcd a b
 [@@by auto]
@@ -219,7 +221,7 @@ theorem bezout_sub_correct a b =
 theorem gcd_eq_one_iff_bezout a b =
   (gcd a b = 1) = (let (u,v) = bezout_sub a b in u*a + v*b = 1)
 [@@by
-  [%use bezout_sub_correct a b]
+  [%use bezout a b]
   @> auto]
 
 theorem one_mod_d_zero_implies_d1 d =
@@ -278,7 +280,7 @@ theorem pulls_down_from_square_right d a b u v =
 theorem gcd_eq_one_iff_bezout a b =
   (gcd a b = 1) = (let (u,v) = bezout_sub a b in u*a + v*b = 1)
 [@@by
-  [%use bezout_sub_correct a b]
+  [%use bezout a b]
   @> auto
 ]
 

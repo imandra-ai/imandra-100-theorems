@@ -73,26 +73,26 @@ lemma counterexample_neg1_means_k_holds prop j k =
 ]
 
 (* Our finale, the Principle of Mathematical Induction,
-   i.e., that `prop k` holds for arbitrary `k`, given
+   i.e., that `prop n` holds for arbitrary `n`, given
    `base prop` and `inductive prop`! *)
 
-theorem induction prop k =
-  k >= 0 ==> prop k
+theorem induction prop n =
+  n >= 0 ==> prop n
 [@@by
   intros
   @> [%use base prop]
-  @> let c = counterexample prop 0 k in
-     [%use counterexample_outcome prop 0 k]
+  @> let c = counterexample prop 0 n in
+     [%use counterexample_outcome prop 0 n]
   @> [%cases c = -1, c >= 1]
   @>| [
        (* c = -1: no counterexample *)
        simplify ()
-       @> [%use counterexample_neg1_means_k_holds prop 0 k]
+       @> [%use counterexample_neg1_means_k_holds prop 0 n]
        @> auto;
 
        (* c >= 1: contradiction from minimal counterexample *)
-       [%use counterexample_is_bad prop 0 k]        (* gives: not (prop c) *)       
-       @> [%use holds_before_counterexample prop k 0 (c-1)]
+       [%use counterexample_is_bad prop 0 n]        (* gives: not (prop c) *)       
+       @> [%use holds_before_counterexample prop n 0 (c-1)]
        @> [%use inductive prop (c-1)] 
        @> simplify ();
 

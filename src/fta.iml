@@ -408,7 +408,7 @@ lemma g_bigger_progress n =
 [@@by auto]
 [@@disable small_divisor_from]
 
-theorem prime_factors_correct n =
+theorem prime_factorization_exists n =
   n >= 2 ==> all_prime (prime_factors n) && prod_list (prime_factors n) = n
 [@@by
   induction ()
@@ -555,7 +555,7 @@ lemma prime_prod_list_one_is_empty xs =
 
 (* And at last, prime factorizations are unique! *)
 
-theorem unique_prime_factorization xs ys =
+theorem prime_factorization_unique xs ys =
   all_prime xs && all_prime ys && prod_list xs = prod_list ys
   ==> permutation xs ys
 [@@by
