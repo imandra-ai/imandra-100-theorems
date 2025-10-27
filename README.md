@@ -257,9 +257,13 @@ theorem bezout a b =
 
 [Source: src/isosceles.iml](src/isosceles.iml)
 
-*Statement (informal):* 
+*Statement (informal):*  
 
-In a triangle with two equal sides, the base angles are equal, i.e., if $|AB|=|AC|$, then $\angle ABC=\angle BCA$.
+In triangle $ABC$, if the two sides meeting at vertex $C$ are equal in length, i.e., $|AC| = |BC|$, then the base angles at $A$ and $B$ are equal:  
+
+$$
+\angle CAB = \angle ABC.
+$$
 
 <details open>
 <summary><strong>Imandra statement</strong></summary>
