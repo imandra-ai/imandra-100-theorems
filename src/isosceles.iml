@@ -68,10 +68,10 @@ lemma sumsq_zero_imp_each_zero (x:real) (y:real) =
 *)
 
 theorem isosceles_triangle (a:point) (b:point) (c:point) =
-    neqp a b && neqp a c
-    && dist2 a c = dist2 b c
-    ==>
-    angle_eq (sub c a) (sub b a) (sub a b) (sub c b)
+  neqp a b && neqp a c
+  && dist2 a c = dist2 b c
+  ==>
+  angle_eq (sub c a) (sub b a) (sub a b) (sub c b)
 [@@by [%simp_only neqp,sub,angle_eq,norm2,dot,dist2]
       @>>| [%use diff_eq_zero_implies_eq c.x b.x]
         @> [%use diff_eq_zero_implies_eq c.y b.y]

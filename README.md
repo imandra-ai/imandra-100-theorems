@@ -81,8 +81,8 @@ theorem rationals_denumerable_surj (q : Rational.t) =
 
 *Statement (informal):* 
 
-If the triangle $\triangle ABC$ is right-angled at vertex $C$, then the squared length of the side opposite $C$ equals the sum of the squares of the other two sides:  
-$|AB|^2 = |AC|^2 + |BC|^2.$.
+If the triangle $\triangle ABC$ is right-angled at vertex $C$, then
+$$|AB|^2 = |AC|^2 + |BC|^2.$$
 
 <details open>
 <summary><strong>Imandra statement</strong></summary>
@@ -125,12 +125,12 @@ theorem infinitude_of_primes n =
 
 The sum of the reciprocals of the triangular numbers converges to $2$.
 
-More formally, we prove:
+More formally, for all $n \ge 0$, the partial sum of the reciprocals of the first $n$ triangular numbers satisfies
 
-For all $n \ge 0$, the partial sum of the reciprocals of the first $n$ triangular numbers satisfies  
 $$
 \sum_{k=1}^{n} \frac{1}{T_k} = 2 - \frac{2}{n+1},
-$$  
+$$
+
 where $T_k = \dfrac{k(k+1)}{2}$.
 
 
@@ -155,7 +155,8 @@ theorem sum_recip_tri_closed_form n =
 
 *Statement (informal):* 
 
-For all $n\in\mathbb{N}$, $\displaystyle (x+y)^n=\sum_{k=0}^{n}\binom{n}{k}x^{,n-k}y^{,k}$.*  
+For all $n \in \mathbb{N}$,  
+$$(x + y)^n = \sum_{k=0}^{n} \binom{n}{k} x^{n-k} y^{k}.$$
 
 <details open>
 <summary><strong>Imandra statement</strong></summary>
@@ -251,10 +252,10 @@ In a triangle with two equal sides, the base angles are equal, i.e., if $|AB|=|A
 
 ```ocaml
 theorem isosceles_triangle (a:point) (b:point) (c:point) =
-    neqp a b && neqp a c
-    && dist2 a c = dist2 b c
-    ==>
-    angle_eq (sub c a) (sub b a) (sub a b) (sub c b)
+  neqp a b && neqp a c
+  && dist2 a c = dist2 b c
+  ==>
+  angle_eq (sub c a) (sub b a) (sub a b) (sub c b)
 ```
 </details>
 
@@ -268,7 +269,7 @@ theorem isosceles_triangle (a:point) (b:point) (c:point) =
 
 *Statement (informal):*  
 
-For natural numbers $a,b$, the Euclidean algorithm defined by repeated subtraction always terminates and yields the greatest common divisor of $a$ and $b$.  
+For natural numbers $a,b$, the Euclidean GCD algorithm defined by repeated subtraction always terminates and yields the greatest common divisor of $a$ and $b$.  
 
 Equivalently, it computes the unique positive integer that divides both $a$ and $b$, and that is itself divisible by every common divisor of $a$ and $b$.
 
@@ -359,6 +360,7 @@ theorem prime_factorization_unique xs ys =
 *Statement (informal):*  
 
 An integer $n$ is divisible by $3$ iff the sum of its base-$10$ digits is divisible by $3$.
+
 
 <details open>
 <summary><strong>Imandra statement</strong></summary>
