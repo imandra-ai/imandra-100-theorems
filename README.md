@@ -393,8 +393,11 @@ theorem sum_digits_preserves_mod3 n =
 
 *Statement (informal):*  
 
-For all vectors $x, y \in \mathbb{R}^2$, if $\|x\|$, $\|y\|$, and $\|x + y\|$ denote their non-negative lengths, then  
-$$\|x + y\| \le \|x\| + \|y\|.$$
+For all vectors $x, y \in \mathbb{R}^2$, if $\|x\|$, $\|y\|$, and $\|x + y\|$ denote their non-negative lengths, then
+
+$$
+\|x + y\| \le \|x\| + \|y\|.
+$$
 
 <details open>
 <summary><strong>Imandra statement</strong></summary>
