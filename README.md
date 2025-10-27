@@ -280,9 +280,8 @@ theorem isosceles_triangle (a:point) (b:point) (c:point) =
 
 *Statement (informal):*  
 
-For natural numbers $a,b$, the Euclidean GCD algorithm defined by repeated subtraction always terminates and yields the greatest common divisor of $a$ and $b$.  
-
-Equivalently, it computes the unique positive integer that divides both $a$ and $b$, and that is itself divisible by every common divisor of $a$ and $b$.
+For natural numbers $a,b$, the Euclidean GCD algorithm defined by repeated subtraction always terminates and yields a positive integer $g$ such that  
+$g$ divides both $a$ and $b$, and every common divisor of $a$ and $b$ divides $g$.
 
 <details open>
 <summary><strong>Imandra statement</strong></summary>

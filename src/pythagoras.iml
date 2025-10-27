@@ -45,6 +45,6 @@ let right_at (c : point) (a : point) (b : point) : bool =
 
 (* Pythagorean theorem in predicate form *)
 
-lemma pythagoras (a : point) (b : point) (c : point) =
+theorem pythagoras (a : point) (b : point) (c : point) =
   right_at c a b ==> dist2 a b = Real.(dist2 a c + dist2 b c)
 [@@by auto]
