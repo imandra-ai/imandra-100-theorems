@@ -229,6 +229,17 @@ In Imandra, we construct the Bezout coefficients with the function `bezout_sub`.
 <summary><strong>Imandra statement</strong></summary>
 
 ```ocaml
+let rec bezout_sub (a:int) (b:int) : int * int =
+  if a < 0 || b < 0 then (0,0)
+  else if a = 0 then (0,1)
+  else if b = 0 then (1,0)
+  else if a >= b then
+    let (u',v') = bezout_sub (a - b) b in
+    (u', v' - u')
+  else
+    let (u',v') = bezout_sub a (b - a) in
+    (u' - v', v')
+
 theorem bezout a b =
   let (u,v) = bezout_sub a b in
   u*a + v*b = gcd a b
