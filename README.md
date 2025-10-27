@@ -1,6 +1,6 @@
 # Imandra proofs of the "top 100" theorems :-)
 
-See the [Top 100 Theorems](https://www.cs.ru.nl/~freek/100/) website for more.
+This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove the [Top 100 Theorems](https://www.cs.ru.nl/~freek/100/) in [Imandra](https://marketplace.visualstudio.com/items?itemName=imandra.imandrax).
 
 # Status
 

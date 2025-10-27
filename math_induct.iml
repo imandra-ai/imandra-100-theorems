@@ -10,16 +10,19 @@ axiom base prop =
   prop 0
 
 axiom inductive prop n =
-  prop n ==> prop (n+1)
+  n >= 0 && prop n ==> prop (n+1)
 
 (* Under thease assumptions, we'll prove that `prop n` holds for all n>=0. *)
 
-(* Find a minimal counterexample to prop in range [i..k] *)
+(* Find a minimal counterexample to prop in range [i..k]. *)
+
 let rec counterexample prop i k =
   if i > k then -1
   else if not (prop i) then i
   else counterexample prop (i+1) k
 [@@measure Ordinal.of_int (k-i)]
+
+(* Key properties of minimal counterexamples. *)
 
 lemma holds_before_counterexample prop k i j =
   j > 0 && i <= j && j < counterexample prop i k
@@ -47,7 +50,8 @@ lemma counterexample_outcome prop i k =
       (c = -1) || (c >= i && c <= k && not (prop c))
 [@@by auto]
 
-(* If no counterexample exists in [0..k], then prop k. *)
+(* If no counterexample exists in [0..k], then prop k holds. *)
+
 lemma counterexample_neg1_means_k_holds prop j k =
   (k >= 0 && j = 0 && counterexample prop j k = -1) ==> prop k
 [@@by
@@ -58,7 +62,6 @@ lemma counterexample_neg1_means_k_holds prop j k =
 
     (* k > 0 *)
     intros
-    @> esimp
     @> [%use counterexample_neg1_prefix prop 0 k]  (* needs k>0 *)
     @> [%replace j]
     @> simplify ()
@@ -79,7 +82,7 @@ theorem induction prop k =
   intros
   @> [%use base prop]
   @> let c = counterexample prop 0 k in
-  [%use counterexample_outcome prop 0 k]
+     [%use counterexample_outcome prop 0 k]
   @> [%cases c = -1, c >= 1]
   @>| [
        (* c = -1: no counterexample *)
