@@ -1,6 +1,8 @@
 (* A proof of the Fundamental Theorem of Arithmetic in Imandra.
-   Theorem 80 in the 100 Theorems list. *)
-(* G.Passmore, Imandra *)
+   Theorem 80 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
 
 [@@@import GCD, "gcd.iml"]
 [@@@import Inf_primes, "inf_primes.iml"]

@@ -1,6 +1,8 @@
 (* Formula for Number of Combinations in Imandra. 
-   Theorem 58 in the 100 Theorems list. *)
-(* G.Passmore, Imandra *)
+   Theorem 58 in the 100 Theorems list. 
+
+   Grant Passmore, Imandra
+ *)
 
 [@@@import "mod.iml"]
 [@@@import "binomial.iml"]

@@ -1,6 +1,8 @@
 (* An ImandraX proof of the infinite of primes! 
-   Theorem 11 in the 100 Theorems list. *)
-(* G.Passmore, Imandra *)
+   Theorem 11 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
 
 [@@@import "mod.iml"]
 

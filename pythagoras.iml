@@ -1,7 +1,7 @@
 (* Two proofs of the Pythagorean theorem in Imandra.
    Theorem 4 in the 100 Theorems list.
 
-   G.Passmore, Imandra *)
+   Grant Passmore, Imandra *)
 
 (* Coordinate-level statement, purely polynomial in 6 reals *)
 

@@ -1,6 +1,8 @@
 (* Number of subsets of a (finite) set in Imandra, rep'd as lists. 
-   Theorem 52 in the 100 Theorems list. *)
-(* G.Passmore, Imandra *)
+   Theorem 52 in the 100 Theorems list. 
+
+   Grant Passmore, Imandra
+ *)
 
 (* prepend x to every subset in a family *)
 let rec prepend (x:'a) (sets:'a list list) : 'a list list =

@@ -4,7 +4,7 @@
    This includes proofs of both Theorem 69 (GCD Algorithm)
    and Theorem 60 (Bézout's Theorem) in the 100 Theorems list.
 
-   G.Passmore, Imandra *)
+   Grant Passmore, Imandra *)
 
 [@@@import "mod.iml"]
 

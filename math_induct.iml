@@ -1,6 +1,8 @@
 (* A proof of the Principle of Mathematical Induction in Imandra.
-   Theorem 74 in the 100 Theorems list. *)
-(* G.Passmore, Imandra *)
+   Theorem 74 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+*)
 
 (* Schematic assumptions of the `base` and `inductive` steps for `prop`. *)
 
@@ -67,7 +69,9 @@ lemma counterexample_neg1_means_k_holds prop j k =
   ]
 ]
 
-(* Our finale, the Principle of Mathematical Induction! *)
+(* Our finale, the Principle of Mathematical Induction,
+   i.e., that `prop k` holds for arbitrary `k`, given
+   `base prop` and `inductive prop`! *)
 
 theorem induction prop k =
   k >= 0 ==> prop k

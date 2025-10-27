@@ -1,7 +1,7 @@
 (* Core properties of `mod`, first derived on our definition of
    `Euclidean_mod.emod`, and then mapped to `Int.mod`.
 
-   G.Passmore, Imandra
+   Grant Passmore, Imandra
  *)
 
 let abs x =

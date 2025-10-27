@@ -1,6 +1,8 @@
 (* Binomial Theorem in Imandra. 
-   Theorem 44 in the 100 Theorems list. *)
-(* G.Passmore, Imandra *)
+   Theorem 44 in the 100 Theorems list.
+  
+   Grant Passmore, Imandra
+ *)
 
 let rec pow (a:int) (n:int) : int =
   if n <= 0 then 1 else a * pow a (n - 1)

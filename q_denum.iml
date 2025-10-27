@@ -1,6 +1,8 @@
 (* A proof of the denumerability of the rationals in Imandra.
-   Theorem 3 in the 100 Theorems list. *)
-(* G.Passmore, Imandra *)
+   Theorem 3 in the 100 Theorems list. 
+
+   Grant Passmore, Imandra
+ *)
 
 [@@@import "sqrt2_irrational.iml"]
 

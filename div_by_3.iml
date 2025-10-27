@@ -1,6 +1,8 @@
 (* An Imandra proof of the Divisibity by 3 Rule. 
-   Theorem 85 in the 100 Theorems list. *)
-(* G.Passmore, Imandra. *)
+   Theorem 85 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
 
 [@@@import "mod.iml"]
 

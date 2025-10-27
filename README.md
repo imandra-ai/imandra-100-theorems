@@ -4,7 +4,7 @@ See the [Top 100 Theorems](https://www.cs.ru.nl/~freek/100/) website for more.
 
 # Status
 
-Currently, we have proven:
+Currently, we have proven 13/100:
 
 1\. Irrationality of √2  
 3\. Denumerability of the Rationals  
@@ -25,4 +25,4 @@ More coming soon!
 
 # Contact
 
-Grant Passmore (grant@imandra.ai), Imandra
+Grant Passmore (grant@imandra.ai)
