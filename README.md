@@ -155,8 +155,11 @@ theorem sum_recip_tri_closed_form n =
 
 *Statement (informal):* 
 
-For all $n \in \mathbb{N}$,  
-$$(x + y)^n = \sum_{k=0}^{n} \binom{n}{k} x^{n-k} y^{k}.$$
+For all $n \in \mathbb{N}$,
+
+$$
+(x + y)^n = \sum_{k=0}^{n} \binom{n}{k} x^{n-k} y^{k}.
+$$
 
 <details open>
 <summary><strong>Imandra statement</strong></summary>
