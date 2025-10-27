@@ -4,7 +4,7 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven 13/100:
+Currently, we have proven 14/100:
 
 1\. Irrationality of √2  
 3\. Denumerability of the Rationals  
@@ -15,6 +15,7 @@ Currently, we have proven 13/100:
 52\. Number of Subsets of a Set  
 58\. Formula for Number of Combinations  
 60\. Bezout's Theorem  
+65\. Isosceles Triangle Theorem  
 69\. Greatest Common Divisor Algorithm  
 74\. Principle of Mathematical Induction  
 80\. The Fundamental Theorem of Arithmetic  

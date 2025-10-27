@@ -1,0 +1,85 @@
+(* A proof of the Isoscelens Triangle Theorem in Imandra.
+   Theorem 65 in the 100 Theorems list.
+
+   Grant Passmore, Imandra 
+ *)
+
+type point = { x : real; y : real }
+
+let sub (p:point) (q:point) : point = Real.({ x = p.x - q.x; y = p.y - q.y })
+let dot (u:point) (v:point) : real = Real.(u.x * v.x + u.y * v.y)
+let norm2 (u:point) : real = dot u u
+let dist2 (a:point) (b:point) : real = norm2 (sub a b)
+
+let neqp (p:point) (q:point) : bool = p.x <> q.x || p.y <> q.y
+
+(* Angle equality as a polynomial relation *)
+
+let angle_eq (u:point) (v:point) (p:point) (q:point) : bool =
+  let uu = norm2 u and vv = norm2 v and pp = norm2 p and qq = norm2 q in
+  let uv = dot u v and pq = dot p q in
+  (* nondegenerate vectors so angles are well-defined *)
+  Real.(uu > 0.0 && vv > 0.0 && pp > 0.0 && qq > 0.0
+        (* cos^2 equality (polynomial) *)
+        && (uv * uv) * (pp * qq) = (pq * pq) * (uu * vv)
+        (* same-sign condition (polynomial inequality) *)
+        && uv * pq >= 0.0)
+
+(* Some useful arithmetic *)
+
+lemma diff_eq_zero_implies_eq (x:real) (y:real) =
+  x +. (-1.0 *. y) = 0.0 ==> x = y
+[@@by auto]
+
+lemma sos_psd x =
+  Real.(x * x >= 0.0)
+[@@by nonlin ()]
+
+lemma sum_nonneg_eq_zero_implies_both_zero (a:real) (b:real) =
+  (a >=. 0.0 && b >=. 0.0 && a +. b = 0.0) ==> (a = 0.0 && b = 0.0)
+[@@by arith]
+
+lemma square_zero_imp_zero (x:real) =
+  x *. x = 0.0 ==> x = 0.0
+[@@by auto]
+
+(* x^2 + y^2 = 0  ==> x = 0 /\ y = 0 *)
+
+lemma sumsq_zero_imp_each_zero (x:real) (y:real) =
+  x *. x +. y *. y = 0.0 ==> (x = 0.0 && y = 0.0)
+[@@by intros
+   @> [%use sos_psd x] @> [%use sos_psd y] 
+   @> [%use sum_nonneg_eq_zero_implies_both_zero (x *. x) (y *. y)]
+   @> [%use square_zero_imp_zero x]
+   @> [%use square_zero_imp_zero y]   
+   @> generalize [%t x *. x] "a"
+   @> generalize [%t y *. y] "b"
+   @> arith
+]
+
+(* The Isosceles Triangle Theorem:
+  
+   If AC = BC (squared distances equal) and the triangle is nondegenerate,
+   then angle(C,A,B) = angle(A,B,C).
+
+   We represent each angle by the two vectors that form its sides:
+   ∠(C,A,B) is the angle between the vectors (C − A) and (B − A).
+   ∠(A,B,C) is the angle between the vectors (A − B) and (C − B).
+*)
+
+theorem isosceles_triangle (a:point) (b:point) (c:point) =
+    neqp a b && neqp a c
+    && dist2 a c = dist2 b c
+    ==>
+    angle_eq (sub c a) (sub b a) (sub a b) (sub c b)
+[@@by [%simp_only neqp,sub,angle_eq,norm2,dot,dist2]
+      @>>| [%use diff_eq_zero_implies_eq c.x b.x]
+        @> [%use diff_eq_zero_implies_eq c.y b.y]
+        @> [%use sumsq_zero_imp_each_zero (a.x +. (-1.0 *. c.x)) (a.y +. (-1.0 *. c.y))]
+        @> [%use sumsq_zero_imp_each_zero (a.x +. (-1.0 *. c.x)) (a.y +. (-1.0 *. c.y))]
+        @> [%use diff_eq_zero_implies_eq a.x c.x]
+        @> [%use sumsq_zero_imp_each_zero (c.x +. (-1.0 *. b.x)) (c.y +. (-1.0 *. b.y))]
+        @> [%use sumsq_zero_imp_each_zero (a.x +. (-1.0 *. c.x)) (a.y +. (-1.0 *. c.y))]
+
+        @> nonlin ()
+]
