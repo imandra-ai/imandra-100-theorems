@@ -15,27 +15,17 @@ let abs x =
 
 (* Euclidean GCD by subtraction for a,b >= 0 *)
 let rec gcd (a:int) (b:int) : int =
-    if a < 0 || b < 0 then 0
-    else 
-    if a = 0 then b
-    else if b = 0 then a
-    else if a >= b then gcd (a - b) b
-    else gcd a (b - a)
+  if a < 0 || b < 0 then 0
+  else if a = 0 then b
+  else if b = 0 then a
+  else if a >= b then gcd (a - b) b
+  else gcd a (b - a)
 [@@measure (Ordinal.of_int (a + b))]
 [@@by auto]
 
 (* If gcd a b > 0, neither input was negative *)
 theorem gcd_pos_implies_nonneg a b =
   (gcd a b > 0) ==> (a >= 0 && b >= 0)
-[@@by auto]
-
-(* Subtraction step, but only in the nonnegative regime *)
-theorem gcd_step_nonneg a b =
-  (a >= 0 && b >= 0) ==>
-   ((a = 0 ==> gcd a b = b) &&
-    (b = 0 ==> gcd a b = a) &&
-    (a > 0 && b > 0 && a >= b ==> gcd a b = gcd (a - b) b) &&
-    (a > 0 && b > 0 && a <  b ==> gcd a b = gcd a (b - a)))
 [@@by auto]
 
 theorem gcd_comm a b =
@@ -73,8 +63,8 @@ theorem mod_add_fc a b k =
 theorem gcd_dvd_both_pos a b =
   gcd a b > 0 
   ==> 
-  (a mod (gcd a b) = 0 
-  && b mod (gcd a b) = 0)
+  a mod (gcd a b) = 0 
+  && b mod (gcd a b) = 0
 [@@by
   induction ()
   @>| [ (* base case *)
@@ -123,7 +113,7 @@ theorem gcd_absorbs_common_divisor d a b =
 ]
 
 theorem mod_drop_one_b a b =
-  (b > 0 && a >= b) ==> (a - b) mod b = a mod b
+  b > 0 && a >= b ==> (a - b) mod b = a mod b
 [@@by
   intros
   @> [%use mod_add a (-b) b]
@@ -142,7 +132,7 @@ lemma div_pos a b =
 
 (* If 0 ≤ a < b and b>0 then a mod b = a *)
 theorem mod_small a b =
-  (0 <= a && b > 0 && a < b) ==> a mod b = a
+  0 <= a && b > 0 && a < b ==> a mod b = a
 [@@by
   intros @>
   (* a = 0*b + a and 0 ≤ a < b, so a is already a canonical remainder *)
@@ -225,12 +215,12 @@ theorem gcd_eq_one_iff_bezout a b =
   @> auto]
 
 theorem one_mod_d_zero_implies_d1 d =
-  (d > 0 && 1 mod d = 0) ==> d = 1
+  d > 0 && 1 mod d = 0 ==> d = 1
 [@@by [%use mod_range 1 d] @> auto]
 
 (* Pull-down lemmas from squares using Bezout *)
 theorem pulls_down_from_square_left d a b u v =
-  (d > 0 && (a*a) mod d = 0 && b mod d = 0 && u*a + v*b = 1)
+  d > 0 && (a*a) mod d = 0 && b mod d = 0 && u*a + v*b = 1
   ==> a mod d = 0
 [@@by
   intros
@@ -251,7 +241,7 @@ theorem pulls_down_from_square_left d a b u v =
 ]
 
 theorem pulls_down_from_square_right d a b u v =
-  (d > 0 && a mod d = 0 && (b*b) mod d = 0 && u*a + v*b = 1)
+  d > 0 && a mod d = 0 && (b*b) mod d = 0 && u*a + v*b = 1
   ==> b mod d = 0
 [@@by
   intros
@@ -290,7 +280,9 @@ lemma elim_neq x y =
   (x <> y) = not (x = y)
 
 theorem mod_sum_zero_from_terms d x y =
-  ( d <> 0 && x mod d = 0 && y mod d = 0) ==> (((x mod d) + (y mod d)) mod d) = 0
+  d <> 0 && x mod d = 0 && y mod d = 0 
+  ==> 
+  (x mod d + y mod d) mod d = 0
 [@@by
   intros
   @> [%use mod_add x y d]
@@ -298,7 +290,8 @@ theorem mod_sum_zero_from_terms d x y =
 ]
 
 theorem divisor_square_left_in_coprime_is_one d a b =
-  (gcd a b = 1 && d > 0 && d <> 0 && (a*a) mod d = 0 && b mod d = 0) ==> d = 1
+  gcd a b = 1 && d > 0 && d <> 0 && (a*a) mod d = 0 && b mod d = 0 
+  ==> d = 1
 [@@by
   intros
   (* use Bezout for gcd *)
@@ -324,34 +317,28 @@ theorem divisor_square_left_in_coprime_is_one d a b =
 (* If gcd a b = 1, neither input went down the negative-guard,
    so both are nonnegative. *)
 theorem gcd_eq_one_nonneg a b =
-  (gcd a b = 1) ==> (a >= 0 && b >= 0)
-[@@by
-  auto
-]
+  gcd a b = 1 ==> a >= 0 && b >= 0
+[@@by auto]
 
 (* If gcd a b = 1, then a and b are not both zero. *)
 theorem gcd_eq_one_not_both_zero a b =
-  (gcd a b = 1) ==> (a <> 0 || b <> 0)
+  gcd a b = 1 ==> (a <> 0 || b <> 0)
 [@@by
   auto
 ]
 
 (* Nonzero squares stay nonzero. *)
 theorem square_nonzero_if_nonzero a =
-  (a <> 0) ==> (a*a) <> 0
-[@@by
-  auto
-]
+  a <> 0 ==> a*a <> 0
+[@@by auto]
 
 (* If a,b are nonnegative and not both zero, gcd a b is positive. *)
 theorem gcd_pos_from_nonneg_not_both_zero a b =
-  (a >= 0 && b >= 0 && (a <> 0 || b <> 0)) ==> gcd a b > 0
-[@@by
-  auto
-]
+  a >= 0 && b >= 0 && (a <> 0 || b <> 0) ==> gcd a b > 0
+[@@by auto]
 
 theorem gcd_pos_of_square_pair a b =
-  (gcd a b = 1) ==> gcd (a*a) b > 0
+  gcd a b = 1 ==> gcd (a*a) b > 0
 [@@by
   intros
   (* from gcd a b = 1 ⇒ a,b ≥ 0 *)
@@ -385,19 +372,19 @@ theorem coprime_square_left_sub_pos_g a b =
 ]
 
 theorem gcd_sub_eq_one_nonneg a b =
-  (gcd a b = 1) ==> (a >= 0 && b >= 0)
+  gcd a b = 1 ==> a >= 0 && b >= 0
 [@@by auto]
 
 theorem gcd_sub_eq_one_not_both_zero a b =
-  (gcd a b = 1) ==> (a <> 0 || b <> 0)
+  gcd a b = 1 ==> a <> 0 || b <> 0
 [@@by auto]
 
 theorem square_nonzero_if_nonzero a =
-  (a <> 0) ==> (a*a) <> 0
+  a <> 0 ==> a*a <> 0
 [@@by auto]
 
 theorem gcd_sub_pos_from_nonneg_not_both_zero a b =
-  (a >= 0 && b >= 0 && (a <> 0 || b <> 0)) ==> gcd a b > 0
+  a >= 0 && b >= 0 && (a <> 0 || b <> 0) ==> gcd a b > 0
 [@@by auto]
 
 theorem gcd_sub_pos_of_square_pair_right a b =
@@ -412,8 +399,8 @@ theorem gcd_sub_pos_of_square_pair_right a b =
 ]
 
 theorem one_mod_zero_from_terms d a b u v =
-  d <> 0 && ((a*u) mod d = 0 && (b*v) mod d = 0 && ((a*u) + (b*v)) = 1)
-  ==> (1 mod d) = 0
+  d <> 0 && (a*u) mod d = 0 && (b*v) mod d = 0 && ((a*u) + (b*v)) = 1
+  ==> 1 mod d = 0
 [@@by
   intros
   @> [%use mod_add (a*u) (b*v) d]
@@ -424,16 +411,17 @@ theorem one_mod_zero_from_terms d a b u v =
 ]
 
 theorem divisor_square_right_in_coprime_is_one d a b =
-  (gcd a b = 1 && d > 0 && d <> 0 && a mod d = 0 && (b*b) mod d = 0) ==> d = 1
+  gcd a b = 1 && d > 0 && d <> 0 && a mod d = 0 && (b*b) mod d = 0 
+  ==> d = 1
 [@@by
   intros
   @> [%use gcd_eq_one_iff_bezout a b]
   @> let (u,v) = bezout_sub a b in
-     esimp                                   (* exposes u*a + v*b = 1 *)
+     esimp                                          (* exposes u*a + v*b = 1 *)
   @> [%use pulls_down_from_square_right d a b u v]  (* gives b mod d = 0 *)
   @> esimp
-  @> [%use mod_mul_preserves_zero u a d]     (* (u*a) mod d = 0 *)
-  @> [%use mod_mul_preserves_zero v b d]     (* (v*b) mod d = 0 *)
+  @> [%use mod_mul_preserves_zero u a d]            (* (u*a) mod d = 0 *)
+  @> [%use mod_mul_preserves_zero v b d]            (* (v*b) mod d = 0 *)
   @> [%use mod_sum_zero_from_terms d (a*u) (b*v)]
   @> [%use one_mod_d_zero_implies_d1 d]
   @> simplify ()
@@ -447,7 +435,7 @@ theorem divisor_square_right_in_coprime_is_one d a b =
 ]
 
 theorem gcd_pos_of_square_pair_right a b =
-  (gcd a b = 1) ==> gcd a (b*b) > 0
+  gcd a b = 1 ==> gcd a (b*b) > 0
 [@@by
   intros
   @> [%use gcd_sub_eq_one_nonneg a b]
@@ -469,7 +457,7 @@ theorem coprime_square_right_sub_pos_g a b =
 ]
 
 theorem gcd_square_square_from_coprime a b = 
-  (gcd a b = 1) ==> gcd (a*a) (b*b) = 1
+  gcd a b = 1 ==> gcd (a*a) (b*b) = 1
 [@@by
   intros
   @> [%use coprime_square_left_sub_pos_g a b]      (* gcd_sub (a*a) b = 1 *)
@@ -544,7 +532,6 @@ module Z = struct
     (* push divisibility to |a| and |b| *)
     @> [%use mod_zero_abs d a]
     @> [%use mod_zero_abs d b]
-    (* apply the subtraction-GCD version you already proved *)
     @> [%use gcd_absorbs_common_divisor d (abs a) (abs b)]
     @> auto
   ]

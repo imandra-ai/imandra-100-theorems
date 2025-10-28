@@ -1,0 +1,222 @@
+(* A proof of Divergence of the Harmonic Series in Imandra.
+   Theorem 34 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
+
+let _R (n:int) = Real.of_int n
+
+(* 1/k as a real for k>=0. *)
+
+let inv (k:int) : Real.t =
+  if k <= 0 then 0.0 else 1.0 /. _R k
+
+(* H(n) = sum_{k=1..n} 1/k *)
+
+let rec harmonic_sum (n:int) : Real.t =
+  if n <= 0 then 0.0 else inv n +. harmonic_sum (n-1)
+
+(* Extend from m+1 up to n (inclusive). *)
+
+let rec harmonic_extend (m:int) (n:int) : Real.t =
+  if m < n then inv n +. harmonic_extend m (n-1) else 0.0
+[@@measure (Ordinal.of_int (max 0 (n - m)))] [@@by auto]
+
+(* Decomposition: H(n) = H(m) + extend(m,n) for m <= n *)
+
+lemma harmonic_sum_decomp (m:int) (n:int) =
+  m <= n ==> harmonic_sum n = harmonic_sum m +. harmonic_extend m n
+[@@by auto]
+
+(* Algebraic identity: 1/k - 1/p = (p - k) / (k*p), for k,p >= 0. *)
+
+lemma inv_diff_identity k p =
+  (k <> 0.0 && p <> 0.0)
+  ==> (1.0 /. k -. 1.0 /. p) = (p -. k) /. (k *. p)
+[@@by nonlin ()]
+
+(* Simple reciprocal monotonicity over reals: 
+  0<k<=p  ==>  1/k >= 1/p. *)
+
+lemma inv_antitone k p =
+  Real.(k > 0.0 && p > 0.0 && k <= p
+   ==> (1.0 / k) >= (1.0 / p))
+[@@by nonlin ()]
+
+lemma le_antisymm_int a b =
+  (a <= b && b <= a) ==> a = b
+[@@by arith]
+
+lemma proj_le_z n =
+  Real.of_int n <=. 0.0
+  =
+  (n <= 0)
+[@@by auto]
+
+(* Trivial, but useful for some surgical rewrites. *)
+
+lemma ge_add_mono a a0 b b0 =
+  (a >=. a0 && b >=. b0) ==> a +. b >=. a0 +. b0
+[@@by arith]
+
+(* Core lower bound: if m <= n <= p and p>0, then
+   harmonic_extend(m,n) >= (n-m)/p *)
+
+theorem harmonic_extend_lower_bound m n p =
+  m <= n && n <= p && p > 0 && m >= 0
+  ==> harmonic_extend m n >=. (_R (n - m) /. _R p)
+[@@by
+  induction ()
+  @>| [
+        (* n <= m: both sides 0 *)
+        intros
+        @> [%use le_antisymm_int m n]
+        @> [%expand harmonic_extend m n]
+        @> simplify ()
+        @> [%replace m]
+        @> nonlin()
+     ;
+
+    (* m < n: split off inv n and apply antitone + IH *)
+    intros
+    @> esimp
+    @> [%use inv_antitone (Real.of_int n) (Real.of_int p)]
+    @> simplify ()
+    @> [%expand harmonic_extend m n]
+         @> simplify ()
+         @> [%use proj_le_z n]
+         @> [%replace ((Real.of_int n) <=. 0.0)]
+         @> [%use inv_antitone (_R n) (_R p)]
+         @> simplify ()
+         @> nonlin()         
+  ]
+]
+
+(* 2^k as int *)
+
+let rec exp2 (k:int) : int = 
+  if k <= 0 then 1 else 2 * exp2 (k-1)
+
+(* 2^k step identity *)
+
+lemma exp2_step k =
+  k >= 1 ==> exp2 k = 2 * exp2 (k-1)
+[@@by auto]
+
+(* Difference collapses to the half block *)
+
+lemma exp2_diff_half k =
+  k >= 1 ==> exp2 k - exp2 (k-1) = exp2 (k-1)
+[@@by intros @> [%use exp2_step k] @> arith]
+
+(* Dyadic block corollary: for k≥1,
+   harmonic_extend(2^{k-1}, 2^k) ≥ 1/2 *)
+
+theorem harmonic_extend_lower_bound_corollary k =
+  k >= 1
+  ==> harmonic_extend (exp2 (k-1)) (exp2 k) >=. (1.0 /. 2.0)
+[@@by
+  intros
+  @> [%use harmonic_extend_lower_bound (exp2 (k-1)) (exp2 k) (exp2 k)]
+  @> esimp
+  @> simplify ()
+  @>| [auto; 
+       auto; 
+       [%use exp2_diff_half k] 
+        @> [%use exp2_step k] 
+        @> simplify ()
+        @> nonlin (); 
+       auto]  
+]
+
+(* Lower bound on H(2^k): H(2^k) ≥ 1 + k/2 *)
+
+let rec nat_induct (k:int) : int = 
+  if k <= 0 then 1 else k * nat_induct (k-1)
+[@@by auto]
+
+theorem harmonic_sum_lower_bound k =
+  k >= 1
+  ==> harmonic_sum (exp2 k) >=. (1.0 +. (_R k /. 2.0))
+[@@by induction ~id:[%id nat_induct] ()
+  @>| [
+    (* k = 1 (or ≤1 depending on your split) *)
+    auto;
+
+    (* step k>=2 *)
+    (* Expand H(2^k) via decomposition *)
+    [%use harmonic_sum_decomp (exp2 (k-1)) (exp2 k)]
+    (* Lower bound the "extend" block by 1/2 *)
+    @> [%use harmonic_extend_lower_bound_corollary k]
+    (* Now add the two lower bounds: IH (H1) + 1/2 *)
+    @> [%use ge_add_mono (harmonic_sum (exp2 (k-1)))
+                        (((_R 1) /. (_R 2)) +. ((_R k) /. (_R 2)))
+                        (harmonic_extend (exp2 (k-1)) (exp2 k))
+                        ((_R 1) /. (_R 2))]
+      (* Arithmetic finish: (1/2 + k/2) + 1/2 = 1 + k/2 *)
+      @> simplify ()
+      (* Almost there, but need to handle k=1 edge-case! *)
+      @> [%cases k=1]
+      (* Boom! *)
+      @>| [[%replace k] @> auto; auto]
+  ]
+]
+
+
+(* Monotonicity: H is strictly increasing *)
+
+theorem harmonic_sum_monotone m n =
+  m >= 0 && n > m 
+  ==> 
+  harmonic_sum n >. harmonic_sum m
+[@@by
+  induction ()
+  @>| [
+    (* n = m+1 *)
+    intros @> esimp @> auto;
+
+    (* ascend one by one *)
+    simplify ()
+    @>| [[%expand harmonic_sum m]
+         @> [%expand harmonic_sum n]
+         @> simplify ()
+         @>| [[%expand harmonic_sum m]
+               @> simplify ()
+               @> nonlin(); 
+               [%expand harmonic_sum m]
+               @> simplify ()
+               @> nonlin()]; 
+               [%expand harmonic_sum n]
+               @> [%expand harmonic_sum m]
+               @> [%expand harmonic_sum m]
+               @> simplify ()
+               @>| [[%cases n=1+m]
+                     @>| [[%replace n] @> simplify ()
+                           @> [%norm harmonic_sum m]
+                           @> simplify ()
+                           @> nonlin(); auto]; auto]]
+  ]
+]
+
+(* At last, our finale: the Harmonic Series H(n) diverges! 
+   That is,
+   
+     n >= 2^(2m)  ==>  H(n) > m.        *)
+
+theorem harmonic_series_diverges m n =
+  m >= 0 && n >= exp2 (2*m)
+  ==> 
+  harmonic_sum n >. Real.of_int m
+[@@by
+  intros
+  @> [%use harmonic_sum_monotone (exp2 (2*m)) n]
+  @> [%use harmonic_sum_lower_bound (2*m)]
+  @> simplify ()
+  @>| [auto; auto; 
+       [%subgoal m=0]
+       @>| [[%replace m] @> esimp @> [%norm exp2 0]
+       @> [%subgoal n=1]
+           @>| [[%replace n] @> [%norm harmonic_sum 1]
+                @> auto; auto]; auto]]
+  
+]

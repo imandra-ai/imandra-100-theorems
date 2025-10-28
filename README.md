@@ -9,7 +9,8 @@ Currently, we have proven **16/100**:
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
 4\. [Pythagorean Theorem](#thm-4)  
-11\. [Infinitude of Primes](#thm-11)  
+11\. [Infinitude of Primes](#thm-11) 
+34\. [Divergence of the Harmonic Series](#thm-34)  
 42\. [Sum of the Reciprocals of the Triangular Numbers](#thm-42)  
 44\. [Binomial Theorem](#thm-44)  
 52\. [Number of Subsets of a Set](#thm-52)  
@@ -115,6 +116,37 @@ theorem infinitude_of_primes n =
 </details>
 
 [Back to list](#status)
+
+
+<a id="thm-34"></a>
+## 34. Divergence of the Harmonic Series
+
+[Source: src/harmonic.iml](src/harmonic.iml)
+
+*Statement (informal):*  
+The harmonic series diverges: its partial sums grow without bound.
+
+More precisely, let
+
+$$
+H(n) = 1 + \frac{1}{2} + \frac{1}{3} + \cdots + \frac{1}{n}.
+$$  
+
+Then, $\forall m \ge 0$, if $n \ge 2^{2m}$ then $H(n) > m$.
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem harmonic_series_diverges m n =
+  m >= 0 && n >= exp2 (2*m)
+  ==> 
+  harmonic_sum n >. Real.of_int m
+```
+</details>
+
+[Back to list](#status)
+
 
 
 <a id="thm-42"></a>
@@ -439,8 +471,8 @@ theorem triangle_inequality (x:R2.vec) (y:R2.vec) (nx:real) (ny:real) (nxy:real)
   let open Real in
   let open R2 in
   nx >= 0.0 && ny >= 0.0 && nxy >= 0.0 &&
-  nx *. nx = norm x && ny *. ny = norm y && nxy *. nxy = norm (add x y)
-  ==> nxy <= nx +. ny
+  nx * nx = norm x && ny * ny = norm y && nxy * nxy = norm (add x y)
+  ==> nxy <= nx + ny
 ```
 </details>
 

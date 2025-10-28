@@ -90,8 +90,8 @@ theorem triangle_inequality (x:R2.vec) (y:R2.vec) (nx:real) (ny:real) (nxy:real)
   let open Real in
   let open R2 in
   nx >= 0.0 && ny >= 0.0 && nxy >= 0.0 &&
-  nx *. nx = norm x && ny *. ny = norm y && nxy *. nxy = norm (add x y)
-  ==> nxy <= nx +. ny
+  nx * nx = norm x && ny * ny = norm y && nxy * nxy = norm (add x y)
+  ==> nxy <= nx + ny
 [@@by
   [%simp_only R2.add, R2.dot, R2.norm]
   @>>|
