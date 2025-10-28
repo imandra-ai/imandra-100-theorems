@@ -457,9 +457,7 @@ theorem sum_digits_preserves_mod3 n =
 
 For all vectors $x, y$ in the plane, the length of their sum is at most the sum of their lengths:
 
-$$
-\|x + y\| \le \|x\| + \|y\|.
-$$
+$$\|x + y\| \le \|x\| + \|y\|.$$
 
 <details open>
 <summary><strong>Imandra statement</strong></summary>
