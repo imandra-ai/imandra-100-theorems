@@ -64,7 +64,6 @@ let eulerian (start:region) (e1:bridge) (e2:bridge) (e3:bridge)
                (e4:bridge) (e5:bridge) (e6:bridge) (e7:bridge) : bool =
   let seq = [e1;e2;e3;e4;e5;e6;e7] in
   all_distinct seq && valid_path seq start
-[@@by auto]
 
 (* Konigsberg: there is NO good_trail using all 7 distinct edges *)
 
