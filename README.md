@@ -203,11 +203,10 @@ theorem powerset_len xs =
 *Statement (informal):*  
 The **Königsberg Bridges Problem** asks whether it is possible to take a walk through the city of Königsberg that crosses each of its seven bridges exactly once and returns to its starting point.  
 
-Euler showed that such a walk is impossible.  
-In modern graph-theoretic terms, the corresponding graph has more than two vertices of odd degree, and thus has no Eulerian path.
+Euler showed that such a walk is impossible.  In modern graph-theoretic terms, the corresponding graph has more than two vertices of odd degree, and thus has no Eulerian path.
 
 We prove two versions:  
-- a **concrete version**, representing the specific Königsberg map directly, which Imandra proves automatically with bounded reasoning, and  
+- a **concrete version**, representing the specific Königsberg map and a purported (impossible) path of length 7 directly, which Imandra proves automatically, and  
 - a **general version**, using the abstract notion of *Eulerian polarity* and reasoning over permutations of edges, and then instantiating this to the configuration of Königsberg.
 
 <details open>
