@@ -397,7 +397,7 @@ theorem sum_digits_preserves_mod3 n =
 
 *Statement (informal):*  
 
-For all vectors $x, y \in \mathbb{R}^2$, if $\|x\|$, $\|y\|$, and $\|x + y\|$ denote their non-negative lengths, then
+For all vectors $x, y$ in the plane, the length of their sum is at most the sum of their lengths:
 
 $$
 \|x + y\| \le \|x\| + \|y\|.
