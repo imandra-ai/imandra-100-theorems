@@ -321,9 +321,7 @@ theorem bezout a b =
 
 In triangle $ABC$, if the two sides meeting at vertex $C$ are equal in length, i.e., $|AC| = |BC|$, then the base angles at $A$ and $B$ are equal:  
 
-$$
-\angle CAB = \angle ABC.
-$$
+$$\angle CAB = \angle ABC.$$
 
 <details open>
 <summary><strong>Imandra statement</strong></summary>
