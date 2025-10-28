@@ -4,7 +4,7 @@
    Grant Passmore, Imandra
  *)
 
-(* First, we set up the environment, a beautiful 18th city with 
+(* First, we set up the environment, a beautiful 18th century city with 
    four regions and seven bridges. *)
 
 type region = L1 | L2 | I1 | I2
