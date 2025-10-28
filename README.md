@@ -75,7 +75,7 @@ theorem rationals_denumerable_surj (q : Rational.t) =
 
 
 <a id="thm-4"></a>
-## 3. Pythagorean Theorem
+## 4. Pythagorean Theorem
 
 [Source: src/pythagoras.iml](src/pythagoras.iml)
 
