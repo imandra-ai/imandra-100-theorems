@@ -9,7 +9,7 @@ Currently, we have proven **17/100**:
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
 4\. [Pythagorean Theorem](#thm-4)  
-11\. [Infinitude of Primes](#thm-11) 
+11\. [Infinitude of Primes](#thm-11)  
 34\. [Divergence of the Harmonic Series](#thm-34)  
 42\. [Sum of the Reciprocals of the Triangular Numbers](#thm-42)  
 44\. [Binomial Theorem](#thm-44)  
