@@ -1,0 +1,161 @@
+(* The Konigsberg Bridges Problem (Euler's Theorem) in Imandra. 
+   Theorem 54 in the 100 Theorems list.
+  
+   Grant Passmore, Imandra
+ *)
+
+(* First, we set up the environment, a beautiful 18th city with 
+   four regions and seven bridges. *)
+
+type region = L1 | L2 | I1 | I2
+
+type bridge = B1 | B2 | B3 | B4 | B5 | B6 | B7
+
+let regions : region list = [L1; L2; I1; I2]
+
+let bridges : bridge list = [B1;B2;B3;B4;B5;B6;B7]
+
+(* Town incidence: endpoints per bridge (undirected) *)
+
+let endpoints (b:bridge) : region * region =
+  match b with
+  | B1 -> (L1,I1) | B2 -> (L1,I1) | B3 -> (L1,I2)
+  | B4 -> (L2,I1) | B5 -> (L2,I1) | B6 -> (L2,I2)
+  | B7 -> (I1,I2)
+
+(* Next, we give two proofs.
+
+   The first proof uses Imandra's bounded reasoning machinery to 
+   exhaustively (symbolically) consider all possible path sequences
+   of 7 bridges, and proves that none of them are Eulerian. This is
+   fully automatic using Imandra's `unroll` tactic.
+
+   The second proof follows the ideas of Euler, proving polarity
+   of Eulerian paths in terms of permutations of edges, and
+   proves that no path through the graph is a permutation
+   of the set of 7 bridges.
+*)
+
+let incident (x:region) (e:bridge) : bool =
+  let (a,b) = endpoints e in (x = a) || (x = b)
+
+(* other endpoint, precondition: incident x e *)
+
+let other (x:region) (e:bridge) : region =
+  let (a,b) = endpoints e in
+  if x = a then b else if x = b then a else x
+
+let rec all_distinct (es:'a list) : bool =
+  match es with
+  | [] -> true
+  | h::t -> (not (List.mem h t)) && all_distinct t
+[@@by auto]
+
+(* Walk a sequence of bridges from a starting region,
+   each consecutive edge must be incident to the current one;
+   we move to the other endpoint each step. *)
+
+let rec valid_path (p:bridge list) (r:region) : bool =
+  match p with
+  | [] -> true
+  | b::ps -> incident r b && valid_path ps (other r b)
+
+let eulerian (start:region) (e1:bridge) (e2:bridge) (e3:bridge) 
+               (e4:bridge) (e5:bridge) (e6:bridge) (e7:bridge) : bool =
+  let seq = [e1;e2;e3;e4;e5;e6;e7] in
+  all_distinct seq && valid_path seq start
+[@@by auto]
+
+(* Konigsberg: there is NO good_trail using all 7 distinct edges *)
+
+theorem konigsberg_concrete start b1 b2 b3 b4 b5 b6 b7 =
+  not (eulerian start b1 b2 b3 b4 b5 b6 b7)
+[@@by unroll 50]
+
+(* Now, let's prove the more general version! *)
+
+let rec remove1 (x:'a ) (xs:'a list) : 'a list =
+  match xs with
+  | [] -> []
+  | y::ys -> if x=y then ys else y :: remove1 x ys
+
+let rec final (p:bridge list) (r:region) : region =
+  match p with
+  | [] -> r
+  | b::ps -> final ps (other r b)
+
+let rec occurrences (p:bridge list) (r:region) : int =
+  match p with
+  | [] -> 0
+  | b::ps -> (if incident r b then 1 else 0) + occurrences ps r
+
+let oddp (n:int) = (n mod 2) = 1
+
+(* Parity of occurrences along a path *)
+
+lemma parity_occurrences p r s =
+  valid_path p r
+  ==> (oddp (occurrences p s)
+       = ((final p r) <> r && (s = r || s = final p r)))
+[@@by auto] [@@disable endpoints]
+
+(* A non-terminal region: pick any region not equal to start or final *)
+
+let non_term_region (p:bridge list) (r:region) : region =
+  match remove1 r (remove1 (final p r) regions) with
+  | [] -> r | x::_ -> x
+[@@by auto]
+
+lemma non_term_region_non_term p r =
+  let s = non_term_region p r in
+  List.mem s regions && s <> r && s <> final p r
+[@@by auto] [@@rw]
+
+(* Parity of available bridges per region in Königsberg *)
+
+lemma parity_bridges r =
+  List.mem r regions ==> oddp (occurrences bridges r)
+[@@by auto] [@@rw]
+
+(* occurrences is invariant under remove1 (bridge permutations) *)
+
+lemma occurrences_remove1 b p r =
+  List.mem b p
+  ==> occurrences (remove1 b p) r
+      = (if incident r b then occurrences p r - 1 else occurrences p r)
+[@@by auto] [@@rw]
+
+(* A simple permutation predicate via remove-one w.r.t. multiset equality *)
+
+let rec permutation (p:bridge list) (q:bridge list) : bool =
+  match p with
+  | [] -> (q = [])
+  | b::ps ->
+    List.mem b q && permutation ps (remove1 b q)
+
+lemma permp_occurrences p q r =
+  permutation p q ==> occurrences p r = occurrences q r
+[@@by
+  induction ()
+  @>| [
+    auto;
+    intros
+    @> [%use occurrences_remove1 (List.hd p) q r] 
+    @> auto
+  ]
+] [@@disable incident]
+
+(* Our final result: there is no Eulerian trail over all 7 bridges! *)
+
+theorem konigsberg r p =
+  List.mem r regions && valid_path p r
+  ==> not (permutation p bridges)
+[@@by
+  intros
+  @> let s = non_term_region p r in
+     [%use non_term_region_non_term p r]
+  @> [%use parity_occurrences p r s]       (* odd iff s in {r, final p r} *)
+  @> [%use permp_occurrences p bridges s]  (* occurrences preserved under permutation *)
+  @> [%use parity_bridges s]               (* but all regions have odd degree over bridges *)
+  @> esimp @> simplify ()                  (* contradiction since s is non-terminal *)
+]

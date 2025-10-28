@@ -13,6 +13,7 @@ Currently, we have proven **15/100**:
 42\. [Sum of the Reciprocals of the Triangular Numbers](#thm-42)  
 44\. [Binomial Theorem](#thm-44)  
 52\. [Number of Subsets of a Set](#thm-52)  
+54\. [Königsberg Bridges Problem](#thm-54)  
 58\. [Formula for Number of Combinations](#thm-58)  
 60\. [Bezout's Theorem](#thm-60)  
 65\. [Isosceles Triangle Theorem](#thm-65)  
@@ -192,6 +193,34 @@ theorem powerset_len xs =
 </details>
 
 [Back to list](#status)
+
+
+<a id="thm-54"></a>
+## 54. Königsberg Bridges Problem
+
+[Source: src/konigsberg.iml](src/konigsberg.iml)
+
+*Statement (informal):*  
+The **Königsberg Bridges Problem** asks whether it is possible to take a walk through the city of Königsberg that crosses each of its seven bridges exactly once and returns to its starting point.  
+
+Euler showed that such a walk is impossible.  
+In modern graph-theoretic terms, the corresponding graph has more than two vertices of odd degree, and thus has no Eulerian path.
+
+We prove two versions:  
+- a **concrete version**, representing the specific Königsberg map directly, which Imandra proves automatically with bounded reasoning, and  
+- a **general version**, using the abstract notion of *Eulerian polarity* and reasoning over permutations of edges, and then instantiating this to the configuration of Königsberg.
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem konigsberg_concrete start b1 b2 b3 b4 b5 b6 b7 =
+  not (eulerian start b1 b2 b3 b4 b5 b6 b7)
+
+theorem konigsberg r p =
+  List.mem r regions && valid_path p r
+  ==> not (permutation p bridges)
+```
 
 
 <a id="thm-58"></a>
