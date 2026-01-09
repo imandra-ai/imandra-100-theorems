@@ -1,0 +1,315 @@
+(* A proof of the Cauchy-Schwarz Inequality in Imandra.
+   Theorem 78 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
+
+(* ============================================================
+   We prove:
+    1. cauchy_schwarz_1: ⟨u,v⟩² ≤ ⟨u,u⟩⟨v,v⟩
+    2. cauchy_schwarz_2: |⟨u,v⟩| ≤ ||u|| ||v|| (relational form)
+    3. Equality condition: u = av implies equality
+   ============================================================ *)
+
+type vec = real list
+
+(* Inner product / dot product *)
+let rec dot (u : vec) (v : vec) : real =
+  match u, v with
+  | [], [] -> 0.0
+  | x :: xs, y :: ys -> Real.(x * y + dot xs ys)
+  | _, _ -> 0.0
+[@@measure Ordinal.of_int (List.length u)]
+
+(* Squared norm: ||v||² = ⟨v,v⟩ *)
+let norm_sq (v : vec) : real = dot v v
+
+(* Scalar multiplication *)
+let rec scalar_mult (a : real) (v : vec) : vec =
+  match v with
+  | [] -> []
+  | x :: xs -> Real.(a * x) :: scalar_mult a xs
+[@@measure Ordinal.of_int (List.length v)]
+
+(* Vector subtraction *)
+let rec vec_sub (u : vec) (v : vec) : vec =
+  match u, v with
+  | [], [] -> []
+  | x :: xs, y :: ys -> Real.(x - y) :: vec_sub xs ys
+  | _, _ -> []
+[@@measure Ordinal.of_int (List.length u)]
+
+(* Zero vector predicate *)
+let rec is_zero_vec (v : vec) : bool =
+  match v with
+  | [] -> true
+  | x :: xs -> x = 0.0 && is_zero_vec xs
+[@@measure Ordinal.of_int (List.length v)]
+
+(* Same length predicate *)
+let rec same_length (u : vec) (v : vec) : bool =
+  match u, v with
+  | [], [] -> true
+  | _ :: xs, _ :: ys -> same_length xs ys
+  | _, _ -> false
+
+(* Real absolute value *)
+let abs_real (x : real) : real =
+  if x >=. 0.0 then x else Real.(~- x)
+
+(* is_sqrt x y means: x is the non-negative sqrt of y 
+   (x >= 0, y >= 0, x*x = y) *)
+let is_sqrt (x : real) (y : real) : bool =
+  x >=. 0.0 && y >=. 0.0 && Real.(x * x) = y
+
+(* ============================================================
+   ALGEBRAIC FACTS
+   ============================================================ *)
+
+lemma square_nonneg x = Real.(x * x) >=. 0.0
+[@@by nonlin ()]
+
+lemma square_plus_nonneg x y =
+  y >=. 0.0 ==> Real.(x * x + y) >=. 0.0
+[@@by nonlin ()]
+
+lemma nonzero_square_pos x =
+  x <> 0.0 ==> Real.(x * x) >. 0.0
+[@@by nonlin ()]
+
+lemma pos_plus_nonneg_pos a b =
+  a >. 0.0 && b >=. 0.0 ==> Real.(a + b) >. 0.0
+[@@by nonlin ()]
+
+lemma nonneg_plus_pos_pos a b =
+  a >=. 0.0 && b >. 0.0 ==> Real.(a + b) >. 0.0
+[@@by nonlin ()]
+
+lemma algebra_simplification a b =
+  a >. 0.0 ==>
+  Real.(a - 2.0 * (b / a) * b + (b / a) * (b / a) * a) = Real.(a - b * b / a)
+[@@by nonlin ()]
+
+lemma cs_algebra a b c =
+  a >=. 0.0 && c >. 0.0 && Real.(a - b * b / c) >=. 0.0 
+  ==> Real.(b * b) <=. Real.(a * c)
+[@@by nonlin ()]
+
+lemma prod_nonneg x y =
+  x >=. 0.0 && y >=. 0.0 ==> Real.(x * y) >=. 0.0
+[@@by nonlin ()]
+
+lemma square_of_prod x1 x2 =
+  Real.(x1 * x2 * (x1 * x2)) = Real.(x1 * x1 * (x2 * x2))
+[@@by nonlin ()]
+
+(* ============================================================
+   ABS AND SQRT
+   ============================================================ *)
+
+lemma abs_nonneg x = abs_real x >=. 0.0
+[@@by auto @> nonlin ()]
+
+lemma abs_squared x = Real.(abs_real x * abs_real x) = Real.(x * x)
+[@@by auto @> nonlin ()]
+
+lemma abs_is_sqrt x = is_sqrt (abs_real x) Real.(x * x)
+[@@by [%use abs_nonneg x] @> [%use abs_squared x] @> [%use square_nonneg x] @> auto]
+
+lemma sqrt_mult_square x1 x2 y1 y2 =
+  Real.(x1 * x1) = y1 && Real.(x2 * x2) = y2 ==> 
+  Real.(x1 * x2 * (x1 * x2)) = Real.(y1 * y2)
+[@@by [%use square_of_prod x1 x2] @> nonlin ()]
+
+lemma sqrt_mult x1 x2 y1 y2 =
+  is_sqrt x1 y1 && is_sqrt x2 y2 ==> is_sqrt Real.(x1 * x2) Real.(y1 * y2)
+[@@by [%use prod_nonneg x1 x2] @> [%use prod_nonneg y1 y2] @> [%use sqrt_mult_square x1 x2 y1 y2] @> auto]
+
+(* ============================================================
+   MONOTONICITY OF SQRT!
+   ============================================================ *)
+
+lemma mono_help_1 x y =
+  Real.(x >= y && x >= 0.0 && y >= 0.0 ==> x*x >= y*y)
+[@@by nonlin()]
+
+lemma mono_help_2 x y =
+  Real.(x > 0.0 && y > 0.0 && x*x = y*y) ==> x=y
+[@@by nonlin()]
+
+lemma mono_help_3 x y =
+  Real.(x = 0.0 && x*x = y*y) ==> x=y
+[@@by nonlin()]
+
+lemma sqrt_monotone x1 x2 y1 y2 =
+  is_sqrt x1 y1 && is_sqrt x2 y2 && y1 <=. y2 ==> x1 <=. x2
+[@@by intros @> [%expand is_sqrt x1 y1] @> [%expand is_sqrt x2 y2]
+   @> lift_ifs @> [%replace y1] @> [%replace y2]
+   @> [%use mono_help_1 x1 x2] @> [%use mono_help_2 x1 x2]
+   @> [%use mono_help_3 x1 x2] @> auto]
+
+(* ============================================================
+   VECTOR LEMMAS
+   ============================================================ *)
+
+(* Norm squared is non-negative *)
+lemma norm_sq_nonneg v = norm_sq v >=. 0.0
+[@@by induction ~vars:["v"] () @>| [
+  auto;
+  [%use square_plus_nonneg (List.hd v) (dot (List.tl v) (List.tl v))] @> auto
+]]
+
+(* Non-zero vector has positive norm squared *)
+lemma nonzero_vec_pos_norm v =
+  not (is_zero_vec v) ==> dot v v >. 0.0
+[@@by induction ~vars:["v"] () @>| [
+  auto;
+  [%use nonzero_square_pos (List.hd v)] 
+  @> [%use pos_plus_nonneg_pos Real.(List.hd v * List.hd v) (dot (List.tl v) (List.tl v))]
+  @> [%use nonneg_plus_pos_pos Real.(List.hd v * List.hd v) (dot (List.tl v) (List.tl v))]
+  @> [%use norm_sq_nonneg (List.tl v)]
+  @> auto
+]]
+
+(* same_length preserved under scalar multiplication *)
+lemma same_length_scalar a u v =
+  same_length u v ==> same_length u (scalar_mult a v)
+[@@by induction ~vars:["u"; "v"] () @>| [auto; auto; auto]]
+
+(* Zero vector has zero dot product *)
+lemma dot_zero_vec_right u v =
+  same_length u v && is_zero_vec v ==> dot u v = 0.0
+[@@by induction ~vars:["u"; "v"] () @>| [auto; auto; auto]]
+
+(* Zero vector has zero norm *)
+lemma norm_sq_zero_vec v =
+  is_zero_vec v ==> norm_sq v = 0.0
+[@@by induction ~vars:["v"] () @>| [auto; auto]]
+
+(* ||u - tv||² expansion *)
+lemma norm_sq_diff_projection t u v =
+  same_length u v ==>
+  norm_sq (vec_sub u (scalar_mult t v)) = 
+    Real.(dot u u - 2.0 * t * dot u v + t * t * dot v v)
+[@@by induction ~vars:["u"; "v"] () @>| [auto; auto; auto]]
+
+(* ============================================================
+   CAUCHY-SCHWARZ INTERMEDIATE LEMMAS
+   ============================================================ *)
+
+(* Projection formula is non-negative (from ||u - tv||² >= 0) *)
+lemma projection_nonneg t u v =
+  same_length u v ==>
+  Real.(dot u u - 2.0 * t * dot u v + t * t * dot v v) >=. 0.0
+[@@by 
+  [%use norm_sq_nonneg (vec_sub u (scalar_mult t v))]
+  @> [%use norm_sq_diff_projection t u v]
+  @> [%use same_length_scalar t u v]
+  @> auto]
+[@@disable dot, scalar_mult, vec_sub, same_length, norm_sq]
+
+(* Optimal projection gives key inequality *)
+lemma optimal_projection_nonneg u v =
+  same_length u v && dot v v >. 0.0 ==>
+  Real.(dot u u - dot u v * dot u v / dot v v) >=. 0.0
+[@@by 
+  [%use projection_nonneg Real.(dot u v / dot v v) u v]
+  @> [%use algebra_simplification (dot v v) (dot u v)]
+  @> auto]
+[@@disable dot, scalar_mult, vec_sub, same_length, norm_sq]
+
+(* Zero case: when v = 0 *)
+lemma cauchy_schwarz_zero_case u v =
+  same_length u v && is_zero_vec v ==>
+  Real.(dot u v * dot u v) <=. Real.(dot u u * dot v v)
+[@@by 
+  [%use dot_zero_vec_right u v] 
+  @> [%use norm_sq_zero_vec v] 
+  @> auto]
+[@@disable dot, is_zero_vec, norm_sq]
+
+(* Non-zero case: main proof *)
+lemma cauchy_schwarz_nonzero_case u v =
+  same_length u v && not (is_zero_vec v) ==>
+  Real.(dot u v * dot u v) <=. Real.(dot u u * dot v v)
+[@@by 
+  [%use nonzero_vec_pos_norm v]
+  @> [%use norm_sq_nonneg u]
+  @> [%use optimal_projection_nonneg u v]
+  @> [%use cs_algebra (dot u u) (dot u v) (dot v v)]
+  @> auto]
+[@@disable dot, scalar_mult, vec_sub, same_length, norm_sq, is_zero_vec]
+
+(* ============================================================
+   MAIN THEOREM: CAUCHY-SCHWARZ INEQUALITY (FIRST FORM)
+   ⟨u,v⟩² ≤ ⟨u,u⟩⟨v,v⟩
+   ============================================================ *)
+
+theorem cauchy_schwarz_1 u v =
+  same_length u v ==>
+  Real.(dot u v * dot u v) <=. Real.(dot u u * dot v v)
+[@@by 
+  [%use cauchy_schwarz_zero_case u v]
+  @> [%use cauchy_schwarz_nonzero_case u v]
+  @> auto]
+[@@disable dot, scalar_mult, vec_sub, same_length, norm_sq, is_zero_vec]
+
+(* ============================================================
+   MAIN THEOREM: CAUCHY-SCHWARZ INEQUALITY (SECOND FORM)
+   |⟨u,v⟩| ≤ ||u|| ||v||
+   
+   This uses the relational is_sqrt to express the norm.
+   Given eu = sqrt(norm_sq u) and ev = sqrt(norm_sq v),
+   we have |dot u v| <= eu * ev
+   ============================================================ *)
+
+theorem cauchy_schwarz_2 u v eu ev =
+  same_length u v && is_sqrt eu (norm_sq u) && is_sqrt ev (norm_sq v) ==>
+  abs_real (dot u v) <=. Real.(eu * ev)
+[@@by 
+  [%use cauchy_schwarz_1 u v]
+  @> [%use abs_is_sqrt (dot u v)]
+  @> [%use sqrt_mult eu ev (norm_sq u) (norm_sq v)]
+  @> [%use sqrt_monotone (abs_real (dot u v)) Real.(eu * ev) Real.(dot u v * dot u v) Real.(norm_sq u * norm_sq v)]
+  @> [%use norm_sq_nonneg u]
+  @> [%use norm_sq_nonneg v]
+  @> auto]
+[@@disable dot, scalar_mult, vec_sub, same_length, norm_sq, is_zero_vec, is_sqrt, abs_real]
+
+(* ============================================================
+   EQUALITY CONDITIONS
+   Equality holds iff u and v are linearly dependent
+   ============================================================ *)
+
+(* same_length of scalar_mult with itself *)
+lemma same_length_scalar_mult_self a v =
+  same_length (scalar_mult a v) v
+[@@by induction ~vars:["v"] () @>| [auto; auto]]
+
+(* Dot product of scalar mult with original *)
+lemma dot_scalar_mult_self a v =
+  dot (scalar_mult a v) v = Real.(a * dot v v)
+[@@by induction ~vars:["v"] () @>| [auto; auto]]
+
+(* Norm of scalar multiple *)
+lemma norm_sq_scalar a v =
+  norm_sq (scalar_mult a v) = Real.(a * a * norm_sq v)
+[@@by induction ~vars:["v"] () @>| [auto; auto]]
+
+(* Algebraic identity for equality condition *)
+lemma scalar_mult_cs_algebra a n =
+  n >=. 0.0 ==>
+  Real.((a * n) * (a * n)) = Real.((a * a * n) * n)
+[@@by nonlin ()]
+
+(* EQUALITY: If u = av (linearly dependent), then CS holds with equality *)
+lemma linear_dependence_implies_equality a v =
+  Real.(dot (scalar_mult a v) v * dot (scalar_mult a v) v) = 
+  Real.(norm_sq (scalar_mult a v) * norm_sq v)
+[@@by 
+  [%use dot_scalar_mult_self a v]
+  @> [%use norm_sq_scalar a v]
+  @> [%use square_nonneg (dot v v)]
+  @> [%use scalar_mult_cs_algebra a (norm_sq v)]
+  @> auto]
+[@@disable dot, scalar_mult, norm_sq]

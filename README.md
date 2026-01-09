@@ -4,7 +4,7 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **17/100**:
+Currently, we have proven **18/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
@@ -20,6 +20,7 @@ Currently, we have proven **17/100**:
 65\. [Isosceles Triangle Theorem](#thm-65)  
 69\. [Greatest Common Divisor Algorithm](#thm-69)  
 74\. [Principle of Mathematical Induction](#thm-74)  
+78\. [Cauchy-Schwarz Inequality](#thm-78)  
 80\. [The Fundamental Theorem of Arithmetic](#thm-80)  
 85\. [Divisibility by 3 Rule](#thm-85)  
 91\. [The Triangle Inequality](#thm-91)  
@@ -393,6 +394,36 @@ axiom inductive prop n =
 
 theorem induction prop n =
   n >= 0 ==> prop n
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-78"></a>
+## 78. Cauchy-Schwarz Inequality
+
+[Source: src/cauchy_schwarz.iml](src/cauchy_schwarz.iml)
+
+*Statement (informal):*  
+
+For all vectors $u, v$ in an inner product space,
+
+$$|\langle u, v \rangle| \le \|u\| \cdot \|v\|.$$
+
+Equivalently, $\langle u, v \rangle^2 \le \langle u, u \rangle \cdot \langle v, v \rangle$.
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem cauchy_schwarz_1 u v =
+  same_length u v ==>
+  Real.(dot u v * dot u v) <=. Real.(dot u u * dot v v)
+
+theorem cauchy_schwarz_2 u v eu ev =
+  same_length u v && is_sqrt eu (norm_sq u) && is_sqrt ev (norm_sq v) ==>
+  abs_real (dot u v) <=. Real.(eu * ev)
 ```
 </details>
 
