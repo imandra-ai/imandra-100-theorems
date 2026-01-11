@@ -1,0 +1,143 @@
+(* A proof of the Sum of Arithmetic Series Formula in Imandra.
+   Theorem 68 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
+
+(* We establish the arithmetic series sum formula:
+   
+       Σᵢ₌₀ⁿ (a + i*d) = (n+1) * (first + last) / 2
+   
+   where first = a, last = a + n*d, and there are (n+1) terms.
+   
+   We then use this result to prove a few special cases:
+   - Gauss's formula: 0 + 1 + 2 + ... + n = n*(n+1)/2
+   - Sum of odd numbers: 1 + 3 + 5 + ... + (2n-1) = n² *)
+
+(* Direct sum of arithmetic sequence: Σᵢ₌₀ⁿ (a + i*d) 
+   
+   The sequence is: a, a+d, a+2d, ..., a+nd
+   with (n+1) terms total. *)
+
+let rec arithmetic_sum (a : real) (d : real) (n : int) : real =
+  if n < 0 then 0.0
+  else if n = 0 then a
+  else 
+    let prev = arithmetic_sum a d (n - 1) in
+    let term_n = Real.(a + (Real.of_int n) * d) in
+    Real.(prev + term_n)
+[@@measure Ordinal.of_int n]
+
+(* Right-hand side of the formula: (n+1) * (2a + nd) *)
+
+let formula_rhs (a : real) (d : real) (n : int) : real =
+  let n_real = Real.of_int n in
+  let n_plus_1 = Real.of_int (n + 1) in
+  Real.(n_plus_1 * (2.0 * a + n_real * d))
+
+(* First and last elements of the arithmetic sequence *)
+
+let first_term (a : real) (d : real) (n : int) : real = a
+
+let last_term (a : real) (d : real) (n : int) : real = 
+  Real.(a + (Real.of_int n) * d)
+
+let num_terms (n : int) : real = Real.of_int (n + 1)
+
+(* Key algebraic lemma *)
+
+lemma arith_algebra_key (a : real) (d : real) (n : real) =
+  Real.(n * (2.0 * a + (n - 1.0) * d) + 2.0 * a + 2.0 * n * d) = 
+  Real.((n + 1.0) * (2.0 * a + n * d))
+[@@by nonlin ()]
+
+(* Main theorem, multiplicative form *)
+
+theorem sum_arithmetic_series_mult a d n =
+  n >= 0 ==>
+  Real.(2.0 * arithmetic_sum a d n) = formula_rhs a d n
+[@@by induction ~id:[%id arithmetic_sum] () @>| [
+  auto;  (* Base case: n = 0 *)
+  (* Inductive case: use the algebraic key lemma *)
+  [%use arith_algebra_key a d (Real.of_int n)] @> auto
+]]
+
+lemma mult_div_equiv (a : real) (b : real) (c : real) =
+  b <> 0.0 && Real.(a * b) = c ==> a = Real.(c / b)
+[@@by simplify () @> nonlin ()]
+
+(* Main theorem, division form:
+   
+       Σᵢ₌₀ⁿ (a + i*d) = (n+1) * (2a + n*d) / 2 *)
+
+theorem sum_arithmetic_series a d n =
+  n >= 0 ==>
+  arithmetic_sum a d n 
+   = Real.((of_int n + 1.0) * (2.0 * a + (of_int n * d)) / 2.0)
+[@@by [%use sum_arithmetic_series_mult a d n]
+   @> [%use mult_div_equiv (arithmetic_sum a d n) 2.0 (formula_rhs a d n)]
+   @> auto]
+
+(* --------------------------------------------------------------------------
+   Alternative Form: (n+1) * (first + last) / 2
+   --------------------------------------------------------------------------
+   
+   Since 2a + nd = a + (a + nd) = first + last, we have:
+   
+       Σᵢ₌₀ⁿ (a + i*d) = (num_terms) * (first + last) / 2
+   -------------------------------------------------------------------------- *)
+
+lemma first_last_form (a : real) (d : real) (n : int) =
+  Real.(2.0 * a + (Real.of_int n) * d) = Real.(first_term a d n + last_term a d n)
+[@@by auto]
+
+theorem arith_sum_first_last a d n =
+  n >= 0 ==>
+  Real.(2.0 * arithmetic_sum a d n) = Real.(num_terms n * (first_term a d n + last_term a d n))
+[@@by [%use sum_arithmetic_series a d n] @> [%use first_last_form a d n] @> auto]
+
+(* Special Case 1: Gauss's Formula
+   
+       0 + 1 + 2 + ... + n = n*(n+1)/2
+   
+   This is arithmetic_sum with a=0, d=1. *)
+
+let sum_naturals (n : int) : real = arithmetic_sum 0.0 1.0 n
+
+eval sum_naturals 100 (* = 5050.0 *)
+
+(* Gauss's formula - multiplicative form: 2*(0+1+...+n) = n*(n+1) *)
+theorem gauss_formula n =
+  let n_r = Real.of_int n in
+  let np1_r = Real.of_int (n + 1) in
+  n >= 0 ==>
+  Real.(2.0 * sum_naturals n) = Real.(n_r * np1_r)
+[@@by [%use sum_arithmetic_series 0.0 1.0 n] @> auto]
+
+(* Special Case 2: Sum of First n Odd Numbers
+   
+       1 + 3 + 5 + ... + (2n-1) = n²
+   
+   This beautiful result shows that the sum of the first n odd numbers
+   forms a perfect square. Geometrically, this can be visualized as
+   building squares by adding L-shaped "gnomons" of odd numbers.
+   
+   This is arithmetic_sum with a=1, d=2, indexed 0..(n-1). *)
+
+let sum_odd (n : int) : real = arithmetic_sum 1.0 2.0 (n - 1)
+
+(* Algebraic lemma: simplifying the formula for odd numbers *)
+lemma odd_algebra n =
+  let n_r = Real.of_int n in
+  let nm1_r = Real.of_int (n - 1) in
+  n >= 1 ==>
+  Real.(n_r * (2.0 + nm1_r * 2.0) / 2.0) = Real.(n_r * n_r)
+[@@by nonlin ()]
+
+(* Sum of first n odd numbers equals n² *)
+theorem sum_odd_formula n =
+  let n_r = Real.of_int n in
+  n >= 1 ==>
+  sum_odd n = Real.(n_r * n_r)
+[@@by [%use sum_arithmetic_series 1.0 2.0 (n - 1)] 
+   @> [%use odd_algebra n] @> auto]

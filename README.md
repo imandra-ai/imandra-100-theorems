@@ -4,7 +4,7 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **18/100**:
+Currently, we have proven **20/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
@@ -18,6 +18,8 @@ Currently, we have proven **18/100**:
 58\. [Formula for Number of Combinations](#thm-58)  
 60\. [Bezout's Theorem](#thm-60)  
 65\. [Isosceles Triangle Theorem](#thm-65)  
+66\. [Sum of a Geometric Series](#thm-66)  
+68\. [Sum of an Arithmetic Series](#thm-68)  
 69\. [Greatest Common Divisor Algorithm](#thm-69)  
 74\. [Principle of Mathematical Induction](#thm-74)  
 78\. [Cauchy-Schwarz Inequality](#thm-78)  
@@ -333,6 +335,53 @@ theorem isosceles_triangle (a:point) (b:point) (c:point) =
   && dist2 a c = dist2 b c
   ==>
   angle_eq (sub c a) (sub b a) (sub a b) (sub c b)
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-66"></a>
+## 66. Sum of a Geometric Series
+
+[Source: src/geometric_series.iml](src/geometric_series.iml)
+
+*Statement (informal):*  
+For a geometric sequence with first term $a$, last term $l$, and common ratio $r \neq 1$,
+
+$$\sum_{k=0}^{n-1} a r^k = \frac{a - r \cdot l}{1 - r}.$$
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem sum_geometric_series seq ratio =
+  geometric_sequence seq ratio && ratio <> 1.0 ==>
+  sum seq = Real.((first seq - ratio * last seq) / (1.0 - ratio))
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-68"></a>
+## 68. Sum of an Arithmetic Series
+
+[Source: src/arithmetic_series.iml](src/arithmetic_series.iml)
+
+*Statement (informal):*  
+For an arithmetic sequence with first term $a$, common difference $d$, and $n+1$ terms,
+
+$$\sum_{k=0}^{n} (a + kd) = \frac{(n+1)(2a + nd)}{2}.$$
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem sum_arithmetic_series a d n =
+  n >= 0 ==>
+  arithmetic_sum a d n 
+   = Real.((of_int n + 1.0) * (2.0 * a + (of_int n * d)) / 2.0)
 ```
 </details>
 

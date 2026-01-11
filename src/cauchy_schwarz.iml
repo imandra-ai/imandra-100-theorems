@@ -19,7 +19,6 @@ let rec dot (u : vec) (v : vec) : real =
   | [], [] -> 0.0
   | x :: xs, y :: ys -> Real.(x * y + dot xs ys)
   | _, _ -> 0.0
-[@@measure Ordinal.of_int (List.length u)]
 
 (* Squared norm: ||v||² = ⟨v,v⟩ *)
 let norm_sq (v : vec) : real = dot v v
@@ -29,7 +28,6 @@ let rec scalar_mult (a : real) (v : vec) : vec =
   match v with
   | [] -> []
   | x :: xs -> Real.(a * x) :: scalar_mult a xs
-[@@measure Ordinal.of_int (List.length v)]
 
 (* Vector subtraction *)
 let rec vec_sub (u : vec) (v : vec) : vec =
@@ -37,14 +35,12 @@ let rec vec_sub (u : vec) (v : vec) : vec =
   | [], [] -> []
   | x :: xs, y :: ys -> Real.(x - y) :: vec_sub xs ys
   | _, _ -> []
-[@@measure Ordinal.of_int (List.length u)]
 
 (* Zero vector predicate *)
 let rec is_zero_vec (v : vec) : bool =
   match v with
   | [] -> true
   | x :: xs -> x = 0.0 && is_zero_vec xs
-[@@measure Ordinal.of_int (List.length v)]
 
 (* Same length predicate *)
 let rec same_length (u : vec) (v : vec) : bool =
@@ -123,7 +119,10 @@ lemma sqrt_mult_square x1 x2 y1 y2 =
 
 lemma sqrt_mult x1 x2 y1 y2 =
   is_sqrt x1 y1 && is_sqrt x2 y2 ==> is_sqrt Real.(x1 * x2) Real.(y1 * y2)
-[@@by [%use prod_nonneg x1 x2] @> [%use prod_nonneg y1 y2] @> [%use sqrt_mult_square x1 x2 y1 y2] @> auto]
+[@@by [%use prod_nonneg x1 x2] 
+   @> [%use prod_nonneg y1 y2] 
+   @> [%use sqrt_mult_square x1 x2 y1 y2] 
+   @> auto]
 
 (* ============================================================
    MONOTONICITY OF SQRT!
@@ -162,7 +161,7 @@ lemma norm_sq_nonneg v = norm_sq v >=. 0.0
 (* Non-zero vector has positive norm squared *)
 lemma nonzero_vec_pos_norm v =
   not (is_zero_vec v) ==> dot v v >. 0.0
-[@@by induction ~vars:["v"] () @>| [
+[@@by induction () @>| [
   auto;
   [%use nonzero_square_pos (List.hd v)] 
   @> [%use pos_plus_nonneg_pos Real.(List.hd v * List.hd v) (dot (List.tl v) (List.tl v))]
@@ -174,24 +173,24 @@ lemma nonzero_vec_pos_norm v =
 (* same_length preserved under scalar multiplication *)
 lemma same_length_scalar a u v =
   same_length u v ==> same_length u (scalar_mult a v)
-[@@by induction ~vars:["u"; "v"] () @>| [auto; auto; auto]]
+[@@by auto]
 
 (* Zero vector has zero dot product *)
 lemma dot_zero_vec_right u v =
   same_length u v && is_zero_vec v ==> dot u v = 0.0
-[@@by induction ~vars:["u"; "v"] () @>| [auto; auto; auto]]
+[@@by auto]
 
 (* Zero vector has zero norm *)
 lemma norm_sq_zero_vec v =
   is_zero_vec v ==> norm_sq v = 0.0
-[@@by induction ~vars:["v"] () @>| [auto; auto]]
+[@@by auto]
 
 (* ||u - tv||² expansion *)
 lemma norm_sq_diff_projection t u v =
   same_length u v ==>
   norm_sq (vec_sub u (scalar_mult t v)) = 
     Real.(dot u u - 2.0 * t * dot u v + t * t * dot v v)
-[@@by induction ~vars:["u"; "v"] () @>| [auto; auto; auto]]
+[@@by auto]
 
 (* ============================================================
    CAUCHY-SCHWARZ INTERMEDIATE LEMMAS
@@ -204,7 +203,6 @@ lemma projection_nonneg t u v =
 [@@by 
   [%use norm_sq_nonneg (vec_sub u (scalar_mult t v))]
   @> [%use norm_sq_diff_projection t u v]
-  @> [%use same_length_scalar t u v]
   @> auto]
 [@@disable dot, scalar_mult, vec_sub, same_length, norm_sq]
 
@@ -296,12 +294,6 @@ lemma norm_sq_scalar a v =
   norm_sq (scalar_mult a v) = Real.(a * a * norm_sq v)
 [@@by induction ~vars:["v"] () @>| [auto; auto]]
 
-(* Algebraic identity for equality condition *)
-lemma scalar_mult_cs_algebra a n =
-  n >=. 0.0 ==>
-  Real.((a * n) * (a * n)) = Real.((a * a * n) * n)
-[@@by nonlin ()]
-
 (* EQUALITY: If u = av (linearly dependent), then CS holds with equality *)
 lemma linear_dependence_implies_equality a v =
   Real.(dot (scalar_mult a v) v * dot (scalar_mult a v) v) = 
@@ -310,6 +302,5 @@ lemma linear_dependence_implies_equality a v =
   [%use dot_scalar_mult_self a v]
   @> [%use norm_sq_scalar a v]
   @> [%use square_nonneg (dot v v)]
-  @> [%use scalar_mult_cs_algebra a (norm_sq v)]
   @> auto]
 [@@disable dot, scalar_mult, norm_sq]

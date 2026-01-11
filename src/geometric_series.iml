@@ -1,0 +1,125 @@
+(* A proof of the Sum of Geometric Series Formula in Imandra.
+   Theorem 66 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
+
+(* We establish that for a geometric sequence with ratio r<>1,
+   the sum of the sequence equals:
+   
+       sum = (first - ratio * last) / (1 - ratio)
+   
+   Equivalently, in multiplicative form:
+   
+       sum * (1 - ratio) = first - ratio * last
+ *)
+
+let rec sum (seq : real list) : real =
+  match seq with
+  | [] -> 0.0
+  | x :: rest -> Real.(x + sum rest)
+
+let rec last (xs : real list) : real =
+  match xs with
+  | [] -> 0.0
+  | [x] -> x
+  | _ :: rest -> last rest
+
+let first (xs : real list) : real =
+  match xs with
+  | [] -> 0.0
+  | x :: _ -> x
+
+(* --------------------------------------------------------------------------
+   Geometric Sequence Recognizer
+   --------------------------------------------------------------------------
+   
+   A sequence is geometric if:
+   - It has at least one element
+   - It contains only numbers (automatic in IML's type system)
+   - For adjacent elements a_{i+1} = ratio * a_i
+   
+   This mirrors the ACL2 function geometric-sequence-p.
+   -------------------------------------------------------------------------- *)
+
+let rec geometric_sequence (seq : real list) (ratio : real) : bool =
+  match seq with
+  | [] -> false                        (* Empty list is not geometric *)
+  | [_] -> true                        (* Single element is trivially geometric *)
+  | x :: (y :: _ as rest) -> 
+    y = Real.(x * ratio)               (* Adjacent elements satisfy ratio *)
+    && geometric_sequence rest ratio
+
+(* Key algebraic identity: x*(1-f) + f*x = x 
+   This is the heart of why geometric sums telescope *)
+lemma algebra_key x factor =
+  Real.(x * (1.0 - factor) + factor * x) = x
+[@@by auto]
+
+(* Last element is unchanged when prepending to a list of 2+ elements *)
+lemma last_cons x y rest =
+  last (x :: y :: rest) = last (y :: rest)
+[@@by auto] [@@rw]
+
+(* First element of a non-empty list *)
+lemma first_tail x y rest =
+  first (y :: rest) = y
+[@@by auto]
+
+(* --------------------------------------------------------------------------
+   Main Theorem: Geometric Series Sum (Multiplicative Form)
+   --------------------------------------------------------------------------
+   
+   For a geometric sequence with ratio r:
+   
+       sum(seq) * (1 - r) = first(seq) - r * last(seq)
+   
+   The proof proceeds by induction following geometric_sequence's structure:
+   
+   Case 1 (singleton [x]):
+     sum([x]) * (1-r) = x * (1-r)
+     first([x]) - r * last([x]) = x - r*x = x*(1-r)
+   
+   Case 2 (x :: y :: rest where y = x*r):
+     By IH: sum(y::rest) * (1-r) = y - r*last(y::rest)
+                                     = x*r - r*last(y::rest)
+     
+     sumlist(x::y::rest) * (1-r) 
+       = (x + sum(y::rest)) * (1-r)
+       = x*(1-r) + sum(y::rest)*(1-r)
+       = x*(1-r) + x*r - r*last(y::rest)      [by IH]
+       = x - r*last(y::rest)                  [by algebra_key]
+       = first(x::y::rest) - r*last(x::y::rest)
+   -------------------------------------------------------------------------- *)
+
+theorem sum_geometric_series_multiplicative seq ratio =
+  geometric_sequence seq ratio ==>
+  Real.(sum seq * (1.0 - ratio)) = Real.(first seq - ratio * last seq)
+[@@by induction ~id:[%id geometric_sequence] () @>| [
+  auto;  (* Singleton case *)
+  (* Inductive case: use key algebraic identity and `last_cons` lemma *)
+  [%use algebra_key (first seq) ratio] 
+    @> [%use last_cons (first seq) (Real.(first seq * ratio)) (List.tl (List.tl seq))]
+    @> auto]]
+
+lemma mult_div_equiv (a : real) (b : real) (c : real) =
+  b <> 0.0 && Real.(a * b) = c ==> a = Real.(c / b)
+[@@by simplify () @> nonlin ()]
+
+(* --------------------------------------------------------------------------
+   Main Theorem: Geometric Series Sum (traditional form, with division)
+   --------------------------------------------------------------------------
+   
+   This is the traditional form:
+   
+       sum(seq) = (first(seq) - ratio * last(seq)) / (1 - ratio)
+   
+   Valid when ratio <> 1 (to avoid division by zero).
+   -------------------------------------------------------------------------- *)
+
+theorem sum_geometric_series seq ratio =
+  geometric_sequence seq ratio && ratio <> 1.0 ==>
+  sum seq = Real.((first seq - ratio * last seq) / (1.0 - ratio))
+[@@by [%use sum_geometric_series_multiplicative seq ratio]
+   @> [%use mult_div_equiv (sum seq) Real.(1.0 - ratio) Real.(first seq - ratio * last seq)]
+   @> auto]
