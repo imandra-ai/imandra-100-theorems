@@ -1,0 +1,2510 @@
+(* A proof of the Derangements Formula in Imandra.
+   Theorem 88 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
+
+(* ============================================================
+   DERANGEMENTS
+
+   A derangement of {1, ..., n} is a permutation with no fixed
+   points. The number of derangements D(n) (the "subfactorial")
+   satisfies the recurrence:
+
+       D(0) = 1,  D(1) = 0
+       D(n) = (n-1) * (D(n-1) + D(n-2))   for n >= 2
+
+   The Derangements Formula states that:
+
+       D(n) = n! * Σ_{k=0}^{n} (-1)^k / k!
+
+   This alternating sum is equivalently captured by the
+   linear recurrence:
+
+       D(n) = n * D(n-1) + (-1)^n
+
+   We prove these two recurrences give the same values.
+   ============================================================ *)
+
+(* Factorial *)
+
+let rec fact (n : int) : int =
+  if n <= 0 then 1
+  else n * fact (n - 1)
+[@@measure Ordinal.of_int n] [@@by auto]
+
+(* Signed power of -1, defined recursively for clean proofs *)
+
+let rec minus_one_pow (n : int) : int =
+  if n <= 0 then 1
+  else - minus_one_pow (n - 1)
+[@@measure Ordinal.of_int n] [@@by auto]
+
+(* Number of derangements via the standard recurrence *)
+
+let rec subfact (n : int) : int =
+  if n <= 0 then 1
+  else if n = 1 then 0
+  else (n - 1) * (subfact (n - 1) + subfact (n - 2))
+[@@measure Ordinal.of_int (max 0 n)] [@@by auto]
+
+(* The derangement formula as a linear recurrence:
+   D(n) = n * D(n-1) + (-1)^n
+
+   By unrolling, this gives:
+   D(n) = n! * (1/0! - 1/1! + 1/2! - ... + (-1)^n/n!)
+        = Σ_{k=0}^{n} (-1)^k * n!/k!
+ *)
+
+let rec formula (n : int) : int =
+  if n <= 0 then 1
+  else n * formula (n - 1) + minus_one_pow n
+[@@measure Ordinal.of_int n] [@@by auto]
+
+(* Test evaluations: both definitions agree *)
+
+eval subfact 0  (* 1 *)
+eval subfact 1  (* 0 *)
+eval subfact 2  (* 1 *)
+eval subfact 3  (* 2 *)
+eval subfact 4  (* 9 *)
+eval subfact 5  (* 44 *)
+eval subfact 10 (* 1334961 *)
+
+eval formula 0  (* 1 *)
+eval formula 1  (* 0 *)
+eval formula 2  (* 1 *)
+eval formula 3  (* 2 *)
+eval formula 4  (* 9 *)
+eval formula 5  (* 44 *)
+eval formula 10 (* 1334961 *)
+
+(* ============================================================
+   PROOF THAT THE RECURRENCE AND FORMULA AGREE
+
+   Key insight: from formula(n-1) = (n-1)*formula(n-2) + (-1)^(n-1),
+   rearranging gives (n-1)*formula(n-2) = formula(n-1) - (-1)^(n-1).
+
+   Then: subfact(n) = (n-1)*(formula(n-1) + formula(n-2))
+                     = (n-1)*formula(n-1) + formula(n-1) - (-1)^(n-1)
+                     = n*formula(n-1) + (-1)^n
+                     = formula(n)
+   ============================================================ *)
+
+(* (-1)^n negation: (-1)^n = -(-1)^(n-1) *)
+
+lemma minus_one_pow_negate n =
+  n >= 1 ==> minus_one_pow n = - minus_one_pow (n - 1)
+[@@by auto]
+
+(* Rearrangement of the formula definition at n-1:
+   formula(n-1) = (n-1)*formula(n-2) + (-1)^(n-1)
+   becomes: (n-1)*formula(n-2) = formula(n-1) - (-1)^(n-1) *)
+
+lemma formula_rearranged n =
+  n >= 2 ==>
+  (n - 1) * formula (n - 2) = formula (n - 1) - minus_one_pow (n - 1)
+[@@by auto]
+
+(* Key algebraic identity for the inductive step:
+   if (n-1)*b = a - m, then (n-1)*(a+b) = n*a - m *)
+
+lemma step_algebra (n : int) (a : int) (b : int) (m : int) =
+  (n - 1) * b = a - m
+  ==> (n - 1) * (a + b) = n * a - m
+[@@by auto]
+
+(* ============================================================
+   CONSTRUCTIVE DERANGEMENTS
+
+   We now construct the actual list of all derangements of
+   {0, ..., n-1} and prove its length equals subfact(n).
+
+   Approach: generate all permutations by insertion, filter
+   for those with no fixed points.
+   ============================================================ *)
+
+(* Prepend y to each list in a list of lists *)
+
+let rec prepend_each (y : int) (ls : int list list) : int list list =
+  match ls with
+  | [] -> []
+  | l :: rest -> (y :: l) :: prepend_each y rest
+
+(* All ways to insert x into a list *)
+
+let rec insert_everywhere (x : int) (l : int list) : int list list =
+  match l with
+  | [] -> [[x]]
+  | y :: rest -> (x :: y :: rest) :: prepend_each y (insert_everywhere x rest)
+
+(* Insert x at every position in every permutation *)
+
+let rec flat_insert (x : int) (ps : int list list) : int list list =
+  match ps with
+  | [] -> []
+  | p :: rest -> insert_everywhere x p @ flat_insert x rest
+
+(* All permutations of {0, ..., n-1} *)
+
+let rec all_perms (n : int) : int list list =
+  if n <= 0 then [[]]
+  else flat_insert (n - 1) (all_perms (n - 1))
+[@@measure Ordinal.of_int n] [@@by auto]
+
+(* Derangement check: no element equals its index *)
+
+let rec is_derangement_aux (p : int list) (i : int) : bool =
+  match p with
+  | [] -> true
+  | x :: rest -> x <> i && is_derangement_aux rest (i + 1)
+
+let is_derangement (p : int list) : bool = is_derangement_aux p 0
+
+(* Filter to keep only derangements *)
+
+let rec filter_derangements (ps : int list list) : int list list =
+  match ps with
+  | [] -> []
+  | p :: rest ->
+    if is_derangement p then p :: filter_derangements rest
+    else filter_derangements rest
+
+(* The list of all derangements of {0, ..., n-1} *)
+
+let derangements (n : int) : int list list =
+  filter_derangements (all_perms n)
+
+(* Verify counts match subfact *)
+
+eval List.length (derangements 0)  (* = 1 *)
+eval List.length (derangements 1)  (* = 0 *)
+eval List.length (derangements 2)  (* = 1 *)
+eval List.length (derangements 3)  (* = 2 *)
+eval List.length (derangements 4)  (* = 9 *)
+eval List.length (derangements 5)  (* = 44 *)
+
+(* ============================================================
+   THE DERANGEMENTS FORMULA (constructive form)
+
+   |derangements(n)| = subfact(n)
+
+   i.e., the number of permutations of {0,...,n-1} with no
+   fixed points equals the derangement formula.
+   ============================================================ *)
+
+(* ============================================================
+   DIRECT RECURSIVE CONSTRUCTION OF DERANGEMENTS
+
+   We construct derangements using the standard "first element"
+   decomposition that mirrors the subfact recurrence:
+
+   For each target k ∈ {1,...,n-1} where position 0 maps to k:
+   - Swap case (position k maps to 0): embed a derangement of n-2
+   - No-swap case (position k ≠ 0): embed a derangement of n-1
+
+   This gives (n-1) * (D(n-2) + D(n-1)) = D(n) derangements.
+
+   The key insight: the LENGTH proof only needs that the
+   embedding functions preserve list length, not their full
+   correctness as derangement generators.
+   ============================================================ *)
+
+(* No-swap embedding: given derangement d of {0,...,n-2} and target k,
+   build a permutation where position 0 = k.
+   Value mapping: v ↦ if v = k-1 then 0 else v+1 *)
+
+let rec map_noswap (k : int) (d : int list) : int list =
+  match d with
+  | [] -> []
+  | v :: rest -> (if v = k - 1 then 0 else v + 1) :: map_noswap k rest
+
+let embed_noswap (k : int) (d : int list) : int list =
+  k :: map_noswap k d
+
+(* Swap embedding: given derangement d of {0,...,n-3} and target k,
+   build a permutation where position 0 = k and position k = 0.
+   Value mapping: v ↦ if v < k-1 then v+1 else v+2
+   Then insert 0 at position k in the result. *)
+
+let rec map_swap (k : int) (d : int list) : int list =
+  match d with
+  | [] -> []
+  | v :: rest -> (if v < k - 1 then v + 1 else v + 2) :: map_swap k rest
+
+let rec insert_at (v : int) (pos : int) (l : int list) : int list =
+  if pos <= 0 then v :: l
+  else match l with
+  | [] -> [v]
+  | x :: rest -> x :: insert_at v (pos - 1) rest
+
+let embed_swap (k : int) (d : int list) : int list =
+  k :: insert_at 0 (k - 1) (map_swap k d)
+
+(* Apply embeddings to lists of derangements *)
+
+let rec apply_noswap (k : int) (ds : int list list) : int list list =
+  match ds with
+  | [] -> []
+  | d :: rest -> embed_noswap k d :: apply_noswap k rest
+
+let rec apply_swap (k : int) (ds : int list list) : int list list =
+  match ds with
+  | [] -> []
+  | d :: rest -> embed_swap k d :: apply_swap k rest
+
+(* Generate derangements for targets k, k-1, ..., 1 *)
+
+let rec targets (k : int) (swap_ds : int list list) (noswap_ds : int list list)
+  : int list list =
+  if k <= 0 then []
+  else
+    apply_swap k swap_ds
+    @ apply_noswap k noswap_ds
+    @ targets (k - 1) swap_ds noswap_ds
+[@@measure Ordinal.of_int (max 0 k)] [@@by auto]
+
+(* The direct recursive construction *)
+
+let rec derangements_rec (n : int) : int list list =
+  if n <= 0 then [[]]
+  else if n = 1 then []
+  else targets (n - 1) (derangements_rec (n - 2)) (derangements_rec (n - 1))
+[@@measure Ordinal.of_int (max 0 n)] [@@by auto]
+
+(* Verify: derangements_rec matches the filter-based derangements *)
+
+eval List.length (derangements_rec 0)  (* = 1 *)
+eval List.length (derangements_rec 1)  (* = 0 *)
+eval List.length (derangements_rec 2)  (* = 1 *)
+eval List.length (derangements_rec 3)  (* = 2 *)
+eval List.length (derangements_rec 4)  (* = 9 *)
+eval List.length (derangements_rec 5)  (* = 44 *)
+
+(* ============================================================
+   LENGTH PROOF: |derangements_rec(n)| = subfact(n)
+
+   The proof follows the structure of the construction:
+   1. apply_swap/apply_noswap preserve list length
+   2. targets produces k * (|swap_ds| + |noswap_ds|) elements
+   3. derangements_rec(n) = targets(n-1, D(n-2), D(n-1))
+      has length (n-1) * (D(n-2) + D(n-1)) = subfact(n)
+   ============================================================ *)
+
+lemma len_apply_noswap k ds =
+  List.length (apply_noswap k ds) = List.length ds
+[@@by auto] [@@rw]
+
+lemma len_apply_swap k ds =
+  List.length (apply_swap k ds) = List.length ds
+[@@by auto] [@@rw]
+
+lemma targets_algebra (a : int) (b : int) (k : int) =
+  k >= 1 ==> a + b + (k - 1) * (a + b) = k * (a + b)
+[@@by auto]
+
+lemma len_targets k swap_ds noswap_ds =
+  k >= 0 ==>
+  List.length (targets k swap_ds noswap_ds)
+  = k * (List.length swap_ds + List.length noswap_ds)
+[@@by induction ~id:[%id targets] () @>| [
+  auto;
+  [%use len_apply_swap k swap_ds]
+  @> [%use len_apply_noswap k noswap_ds]
+  @> [%use targets_algebra
+       (List.length swap_ds) (List.length noswap_ds) k]
+  @> auto
+]]
+
+(* Factor out the step case as a standalone lemma *)
+
+lemma derangements_count_step n =
+  n >= 2
+  && List.length (derangements_rec (n - 1)) = subfact (n - 1)
+  && List.length (derangements_rec (n - 2)) = subfact (n - 2)
+  ==>
+  List.length (derangements_rec n) = subfact n
+[@@by
+  intros
+  @> [%use len_targets (n - 1)
+       (derangements_rec (n - 2)) (derangements_rec (n - 1))]
+  @> auto]
+
+(* ============================================================
+   SOUNDNESS: every element of derangements_rec is a derangement
+
+   Key lemma: map_noswap and map_swap preserve the derangement
+   property (with index shift), following the same reasoning
+   as HOL-Light and Isabelle's constructions.
+   ============================================================ *)
+
+(* Predicate: every element of a list-of-lists is a derangement *)
+
+let rec all_derangements (ds : int list list) : bool =
+  match ds with
+  | [] -> true
+  | d :: rest -> is_derangement d && all_derangements rest
+
+(* No-swap soundness: map_noswap shifts the derangement index by 1.
+   If d has no fixed point at index i, then map_noswap k d has
+   no fixed point at index i+1.
+   Proof: d[j]=k-1 maps to 0≠i+1 (since i≥0); d[j]≠k-1 maps to
+   d[j]+1≠i+j+1 iff d[j]≠i+j (the derangement condition on d). *)
+
+lemma map_noswap_derangement_aux k d i =
+  i >= 0 && is_derangement_aux d i ==>
+  is_derangement_aux (map_noswap k d) (i + 1)
+[@@by induction ~id:[%id is_derangement_aux] () @>| [auto; auto]]
+
+lemma embed_noswap_derangement k d =
+  k >= 1 && is_derangement d ==>
+  is_derangement (embed_noswap k d)
+[@@by [%use map_noswap_derangement_aux k d 0] @> auto]
+
+(* Swap soundness is harder: map_swap shifts by +1 before position k
+   but by +2 after. We need a combined function for clean induction. *)
+
+(* Combined insert_at + map_swap for induction *)
+let rec embed_swap_inner (k : int) (d : int list) (pos : int) : int list =
+  if pos <= 0 then 0 :: map_swap k d
+  else match d with
+  | [] -> [0]
+  | v :: rest ->
+    (if v < k - 1 then v + 1 else v + 2) :: embed_swap_inner k rest (pos - 1)
+
+(* embed_swap_inner equals insert_at 0 pos (map_swap k d) *)
+lemma embed_swap_inner_eq k d pos =
+  pos >= 0 ==>
+  embed_swap_inner k d pos = insert_at 0 pos (map_swap k d)
+[@@by induction ~id:[%id embed_swap_inner] () @>| [auto; auto]]
+
+(* After the insertion point: map_swap with +2 shift *)
+lemma map_swap_after_derangement k d i =
+  i >= 0 && i >= k - 1 && is_derangement_aux d i ==>
+  is_derangement_aux (map_swap k d) (i + 2)
+[@@by induction ~id:[%id is_derangement_aux] () @>| [auto; auto]]
+
+(* Combined check function where i advances with the recursion,
+   giving us the right IH *)
+
+let rec embed_swap_check (k : int) (d : int list) (pos : int) (i : int) : bool =
+  if pos <= 0 then is_derangement_aux (0 :: map_swap k d) i
+  else match d with
+  | [] -> 0 <> i
+  | v :: rest ->
+    (if v < k - 1 then v + 1 else v + 2) <> i
+    && embed_swap_check k rest (pos - 1) (i + 1)
+
+(* The check function equals is_derangement_aux of embed_swap_inner *)
+lemma embed_swap_check_eq k d pos i =
+  pos >= 0 ==>
+  embed_swap_check k d pos i = is_derangement_aux (embed_swap_inner k d pos) i
+[@@by induction ~id:[%id embed_swap_check] () @>| [
+  auto;  (* base: pos <= 0 or d = [] *)
+  auto   (* step: auto can handle the structural equality *)
+]]
+
+(* The check holds when d is a derangement *)
+lemma embed_swap_check_holds k d pos i =
+  i >= 1 && pos >= 0 && i + pos = k && k >= 1
+  && is_derangement_aux d (i - 1) ==>
+  embed_swap_check k d pos i
+[@@by induction ~id:[%id embed_swap_check] () @>| [
+  (* base: pos <= 0 or d = []. When pos<=0, i=k, use map_swap_after *)
+  [%use map_swap_after_derangement k d (i - 1)] @> auto;
+  (* step: IH has shifted i+1, auto connects the pieces *)
+  auto
+]]
+
+lemma embed_swap_derangement k d =
+  k >= 1 && is_derangement d ==>
+  is_derangement (embed_swap k d)
+[@@by
+  [%use embed_swap_inner_eq k d (k - 1)]
+  @> [%use embed_swap_check_eq k d (k - 1) 1]
+  @> [%use embed_swap_check_holds k d (k - 1) 1]
+  @> auto]
+
+(* Lift to lists of derangements *)
+
+lemma apply_noswap_all_derangements k ds =
+  k >= 1 && all_derangements ds ==> all_derangements (apply_noswap k ds)
+[@@by induction ~vars:["ds"] () @>| [
+  auto;
+  [%use embed_noswap_derangement k (List.hd ds)] @> auto
+]]
+
+lemma apply_swap_all_derangements k ds =
+  k >= 1 && all_derangements ds ==> all_derangements (apply_swap k ds)
+[@@by induction ~vars:["ds"] () @>| [
+  auto;
+  [%use embed_swap_derangement k (List.hd ds)] @> auto
+]]
+
+lemma all_derangements_append l1 l2 =
+  all_derangements (l1 @ l2) = (all_derangements l1 && all_derangements l2)
+[@@by auto] [@@rw]
+
+lemma targets_all_derangements k swap_ds noswap_ds =
+  k >= 1 && all_derangements swap_ds && all_derangements noswap_ds
+  ==> all_derangements (targets k swap_ds noswap_ds)
+[@@by induction ~id:[%id targets] () @>| [
+  auto;
+  [%use apply_swap_all_derangements k swap_ds]
+  @> [%use apply_noswap_all_derangements k noswap_ds]
+  @> [%use all_derangements_append
+       (apply_swap k swap_ds)
+       (apply_noswap k noswap_ds @ targets (k - 1) swap_ds noswap_ds)]
+  @> [%use all_derangements_append
+       (apply_noswap k noswap_ds)
+       (targets (k - 1) swap_ds noswap_ds)]
+  @> auto
+]]
+
+(* Main soundness theorem *)
+
+theorem derangements_rec_sound n =
+  all_derangements (derangements_rec n)
+[@@by induction ~id:[%id derangements_rec] () @>| [
+  auto;
+  [%use targets_all_derangements (n - 1)
+     (derangements_rec (n - 2)) (derangements_rec (n - 1))]
+  @> auto
+]]
+
+(* ============================================================
+   A closed-form characterization of `derangements_rec` in terms
+   of subfactorial: derangements_rec produces exactly
+   subfact(n) derangements, and every element is a valid 
+   derangement (permutation with no fixed points).
+   ============================================================ *)
+
+theorem derangements_rec_count n =
+  List.length (derangements_rec n) = subfact n
+[@@by induction ~id:[%id derangements_rec] () @>| [
+  auto;  (* base: n <= 0 or n = 1 *)
+  (* step: n >= 2, IH for n-1 and n-2 *)
+  [%expand derangements_rec n]
+  @> [%expand subfact n]
+  @> [%use len_targets (n - 1)
+       (derangements_rec (n - 2)) (derangements_rec (n - 1))]
+  @> lift_ifs
+  @>>| nonlin ()
+]]
+
+let rec nth (l : int list) (i : int) : int =
+  match l with
+  | [] -> 0
+  | x :: rest -> if i <= 0 then x else nth rest (i - 1)
+
+(* All elements non-negative (needed for round-trip correctness) *)
+
+let rec all_nonneg (l : int list) : bool =
+  match l with
+  | [] -> true
+  | v :: rest -> v >= 0 && all_nonneg rest
+
+(* Inverse value mappings *)
+
+let rec unmap_noswap (k : int) (l : int list) : int list =
+  match l with
+  | [] -> []
+  | v :: rest -> (if v = 0 then k - 1 else v - 1) :: unmap_noswap k rest
+
+(* Round-trips (require non-negative values for correctness) *)
+
+lemma noswap_roundtrip k d =
+  k >= 1 && all_nonneg d ==> unmap_noswap k (map_noswap k d) = d
+[@@by induction ~vars:["d"] () @>| [auto; auto]]
+
+lemma noswap_roundtrip_inv k l =
+  k >= 1 && not (List.mem k l) ==>
+  map_noswap k (unmap_noswap k l) = l
+[@@by induction ~vars:["l"] () @>| [auto; auto]]
+
+(* embed_noswap then tail + unmap = identity *)
+
+lemma embed_noswap_roundtrip k d =
+  k >= 1 && all_nonneg d ==>
+  unmap_noswap k (List.tl (embed_noswap k d)) = d
+[@@by [%use noswap_roundtrip k d] @> auto]
+
+(* unmap then embed = k :: original list (when k not in list) *)
+
+lemma unmap_embed_noswap k l =
+  k >= 1 && not (List.mem k l) ==>
+  embed_noswap k (unmap_noswap k l) = k :: l
+[@@by [%use noswap_roundtrip_inv k l] @> auto]
+
+(* Helper: List.mem distributes over append *)
+
+lemma mem_append a x y =
+  List.mem a x || List.mem a y ==> List.mem a (x @ y)
+[@@by auto] [@@fc] [@@rw]
+
+(* Helper: List.mem respects apply_noswap/swap *)
+
+lemma mem_apply_noswap k d ds =
+  List.mem d ds ==> List.mem (embed_noswap k d) (apply_noswap k ds)
+[@@by auto]
+
+lemma mem_apply_swap k d ds =
+  List.mem d ds ==> List.mem (embed_swap k d) (apply_swap k ds)
+[@@by auto]
+
+(* Helper: List.mem respects targets *)
+
+lemma mem_targets_noswap k d m noswap_ds swap_ds =
+  k >= 1 && k <= m && List.mem d noswap_ds
+  ==> List.mem (embed_noswap k d) (targets m swap_ds noswap_ds)
+[@@by induction ~id:[%id targets] () @>| [
+  auto;
+  [%expand targets m swap_ds noswap_ds]
+  @> [%use mem_apply_noswap k d noswap_ds]
+  @> lift_ifs
+  @>>| auto
+]]
+
+lemma mem_targets_swap k d m noswap_ds swap_ds =
+  k >= 1 && k <= m && List.mem d swap_ds
+  ==> List.mem (embed_swap k d) (targets m swap_ds noswap_ds)
+[@@by induction ~id:[%id targets] () @>| [
+  auto;
+  [%expand targets m swap_ds noswap_ds]
+  @> [%use mem_apply_swap k d swap_ds]
+  @> lift_ifs
+  @>>| auto
+]]
+
+(* Verify lengths match for small n *)
+
+eval List.length (derangements 0) = List.length (derangements_rec 0)
+eval List.length (derangements 1) = List.length (derangements_rec 1)
+eval List.length (derangements 2) = List.length (derangements_rec 2)
+eval List.length (derangements 3) = List.length (derangements_rec 3)
+eval List.length (derangements 4) = List.length (derangements_rec 4)
+eval List.length (derangements 5) = List.length (derangements_rec 5)
+
+(* ============================================================
+   VALID PERMUTATION CHARACTERIZATION
+
+   A valid permutation of {0,...,n-1} is a list of length n
+   with all distinct non-negative values less than n.
+   We prove all_perms generates exactly these.
+   ============================================================ *)
+
+let rec all_distinct (l : int list) : bool =
+  match l with
+  | [] -> true
+  | x :: rest -> not (List.mem x rest) && all_distinct rest
+
+let rec all_lt (l : int list) (n : int) : bool =
+  match l with
+  | [] -> true
+  | x :: rest -> x >= 0 && x < n && all_lt rest n
+
+(* contains_range l n: values 0,...,n-1 all appear in l *)
+
+let rec contains_range (l : int list) (n : int) : bool =
+  if n <= 0 then true
+  else List.mem (n - 1) l && contains_range l (n - 1)
+
+let is_valid_perm (p : int list) (n : int) : bool =
+  List.length p = n && all_distinct p && all_nonneg p && contains_range p n
+
+(* valid_perm_has_max is now trivial *)
+
+lemma valid_perm_has_max p n =
+  is_valid_perm p n && n >= 1 ==> List.mem (n - 1) p
+[@@by auto]
+
+(* Key: filter_derangements membership characterization *)
+
+lemma mem_filter_derangements p ps =
+  List.mem p (filter_derangements ps) = (is_derangement p && List.mem p ps)
+[@@by auto] [@@rw]
+
+(* ============================================================
+   VALID PERMUTATION PROPERTIES
+
+   We need to show all_perms(n) contains ALL valid permutations.
+   contains_range avoids needing the pigeonhole principle.
+   ============================================================ *)
+
+let rec find_pos (v : int) (l : int list) : int =
+  match l with
+  | [] -> 0
+  | x :: rest -> if x = v then 0 else 1 + find_pos v rest
+
+let rec remove_at (i : int) (l : int list) : int list =
+  if i <= 0 then match l with [] -> [] | _ :: rest -> rest
+  else match l with
+  | [] -> []
+  | x :: rest -> x :: remove_at (i - 1) rest
+
+(* Prepending preserves membership *)
+
+lemma mem_prepend_each hd x ys =
+  List.mem x ys ==> List.mem (hd :: x) (prepend_each hd ys)
+[@@by auto]
+
+(* insert_at v j q is a member of insert_everywhere v q.
+   Induct on insert_at so j and q decrease together. *)
+
+lemma mem_insert_everywhere_at v j q =
+  j >= 0 && j <= List.length q
+  ==> List.mem (insert_at v j q) (insert_everywhere v q)
+[@@by induction ~id:[%id insert_at] () @>| [
+  auto;
+  [%use mem_prepend_each (List.hd q) (insert_at v (j - 1) (List.tl q))
+     (insert_everywhere v (List.tl q))]
+  @> auto
+]]
+
+(* If p is in insert_everywhere v q and q is in qs,
+   then p is in flat_insert v qs *)
+
+lemma mem_flat_insert_from v p q qs =
+  List.mem p (insert_everywhere v q) && List.mem q qs
+  ==> List.mem p (flat_insert v qs)
+[@@by induction ~vars:["qs"] () @>| [auto; auto]]
+
+(* Roundtrip: insert after remove recovers original *)
+
+lemma insert_remove_roundtrip l i =
+  i >= 0 && i < List.length l
+  ==> insert_at (nth l i) i (remove_at i l) = l
+[@@by induction ~id:[%id nth] () @>| [auto; auto]]
+
+(* remove_at preserves length, distinctness, and range *)
+
+lemma remove_at_length l i =
+  i >= 0 && i < List.length l
+  ==> List.length (remove_at i l) = List.length l - 1
+[@@by induction ~id:[%id remove_at] () @>| [auto; auto]]
+
+lemma remove_at_all_distinct l i =
+  all_distinct l && i >= 0 && i < List.length l
+  ==> all_distinct (remove_at i l)
+[@@by auto]
+
+lemma find_pos_correct v l =
+  List.mem v l ==> nth l (find_pos v l) = v
+[@@by auto]
+
+lemma find_pos_bound v l =
+  List.mem v l ==> find_pos v l >= 0 && find_pos v l < List.length l
+[@@by auto]
+
+(* Removing an element preserves contains_range for smaller values *)
+
+lemma mem_remove_at_other l i x =
+  List.mem x l && x <> nth l i ==> List.mem x (remove_at i l)
+[@@by auto]
+
+lemma contains_range_remove l v n =
+  contains_range l n && v >= n && List.mem v l
+  ==> contains_range (remove_at (find_pos v l) l) n
+[@@by induction ~id:[%id contains_range] () @>| [
+  auto;
+  [%use mem_remove_at_other l (find_pos v l) (n - 1)]
+  @> [%use find_pos_correct v l]
+  @> auto
+]]
+
+(* Removing n-1 from a valid perm of n gives valid perm of n-1 *)
+
+lemma remove_at_all_nonneg l i =
+  all_nonneg l ==> all_nonneg (remove_at i l)
+[@@by auto]
+
+lemma remove_max_valid_perm p n =
+  is_valid_perm p n && n >= 1
+  ==> is_valid_perm (remove_at (find_pos (n - 1) p) p) (n - 1)
+[@@by
+  [%use valid_perm_has_max p n]
+  @> [%use find_pos_correct (n - 1) p]
+  @> [%use find_pos_bound (n - 1) p]
+  @> [%use remove_at_length p (find_pos (n - 1) p)]
+  @> [%use remove_at_all_distinct p (find_pos (n - 1) p)]
+  @> [%use remove_at_all_nonneg p (find_pos (n - 1) p)]
+  @> [%use contains_range_remove p (n - 1) (n - 1)]
+  @> auto]
+
+(* all_perms completeness: every valid perm is in all_perms *)
+
+(* ============================================================
+   ImandraX BADGUY / WITNESS APPROACH for all_perms_complete
+
+   Following our Hilbert epsilon / Skolem witness approach: 
+   define a CHECKER that verifies a perm is
+   constructible, then prove:
+   1. Valid perms pass the checker
+   2. Passing the checker implies membership in all_perms
+   ============================================================ *)
+
+(* Checker: recursively verifies p can be built by inserting
+   max elements. Returns true iff p is constructible. *)
+
+let rec perm_check (n : int) (p : int list) : bool =
+  if n <= 0 then p = []
+  else
+    List.mem (n - 1) p
+    && List.length p = n
+    && perm_check (n - 1) (remove_at (find_pos (n - 1) p) p)
+[@@measure Ordinal.of_int (max 0 n)] [@@by auto]
+
+(* Step 1: valid perms pass the checker *)
+
+lemma valid_implies_check n p =
+  is_valid_perm p n ==> perm_check n p
+[@@by induction ~id:[%id perm_check] () @>| [
+  auto;
+  [%use remove_max_valid_perm p n]
+  @> [%use valid_perm_has_max p n]
+  @> auto
+]]
+
+(* Step 2: passing the checker implies membership in all_perms *)
+
+lemma check_implies_mem n p =
+  perm_check n p ==> List.mem p (all_perms n)
+[@@by induction ~id:[%id perm_check] () @>| [
+  auto;
+  [%use find_pos_bound (n - 1) p]
+  @> [%use find_pos_correct (n - 1) p]
+  @> [%use insert_remove_roundtrip p (find_pos (n - 1) p)]
+  @> [%use mem_insert_everywhere_at (n - 1) (find_pos (n - 1) p)
+       (remove_at (find_pos (n - 1) p) p)]
+  @> [%use mem_flat_insert_from (n - 1) p
+       (remove_at (find_pos (n - 1) p) p) (all_perms (n - 1))]
+  @> auto
+]]
+
+(* Combine: every valid perm is in all_perms *)
+
+lemma all_perms_complete n p =
+  is_valid_perm p n ==> List.mem p (all_perms n)
+[@@by [%use valid_implies_check n p]
+   @> [%use check_implies_mem n p]
+   @> auto]
+
+(* ============================================================
+   EMBED VALIDITY: embeddings produce valid permutations
+
+   With all_perms_complete, we just need is_valid_perm for the
+   embed results, then they're in all_perms, hence in derangements.
+   ============================================================ *)
+
+(* ============================================================
+   FORWARD DIRECTION: derangements_rec n ⊆ derangements n
+
+   Every rec element is a valid perm (in all_perms) AND a
+   derangement, hence in filter_derangements(all_perms n).
+   ============================================================ *)
+
+(* To show embed results are in all_perms, we use the badguy/checker
+   approach: define a checker that verifies embed results are
+   constructible by all_perms, and prove it always passes. *)
+
+(* embed_noswap k d has n-1 as a member *)
+
+(* If v is in d and v ≠ k-1, then v+1 is in map_noswap k d *)
+
+lemma map_noswap_maps_up k d v =
+  List.mem v d && v <> k - 1
+  ==> List.mem (v + 1) (map_noswap k d)
+[@@by induction ~vars:["d"] () @>| [auto; auto]]
+
+(* If k-1 is in d, then 0 is in map_noswap k d *)
+
+lemma map_noswap_maps_k k d =
+  List.mem (k - 1) d
+  ==> List.mem 0 (map_noswap k d)
+[@@by induction ~vars:["d"] () @>| [auto; auto]]
+
+lemma embed_noswap_has_max k d =
+  k >= 1 && k <= List.length d && List.length d >= 1
+  && contains_range d (List.length d)
+  ==> List.mem (List.length d) (embed_noswap k d)
+[@@by
+  [%cases (k = List.length d)]
+  @>| [
+    auto;
+    [%use map_noswap_maps_up k d (List.length d - 1)] @> auto
+  ]]
+
+(* embed_noswap k d has the right length *)
+
+lemma embed_noswap_len k d =
+  List.length (embed_noswap k d) = 1 + List.length d
+[@@by auto] [@@rw]
+
+(* Forward: valid perm + derangement → in derangements *)
+
+lemma rec_mem_in_filter p n =
+  is_derangement p && is_valid_perm p n
+  ==> List.mem p (filter_derangements (all_perms n))
+[@@by [%use all_perms_complete n p] @> auto]
+
+(* ============================================================
+   FORWARD: embed_swap produces valid perms
+   ============================================================ *)
+
+lemma contains_range_mem d n v =
+  contains_range d n && v >= 0 && v < n ==> List.mem v d
+[@@by induction ~id:[%id contains_range] () @>| [auto; auto]]
+
+(* map_swap injectivity *)
+
+lemma map_swap_injective k v w =
+  v >= 0 && w >= 0 && k >= 1 && v <> w
+  ==> (if v < k - 1 then v + 1 else v + 2) <> (if w < k - 1 then w + 1 else w + 2)
+[@@by auto]
+
+lemma map_swap_preserves_not_mem k v d =
+  v >= 0 && k >= 1 && all_nonneg d && not (List.mem v d)
+  ==> not (List.mem (if v < k - 1 then v + 1 else v + 2) (map_swap k d))
+[@@by induction ~vars:["d"] () @>| [
+  auto;
+  [%use map_swap_injective k v (List.hd d)] @> auto
+]]
+
+lemma map_swap_distinct k d =
+  k >= 1 && all_nonneg d && all_distinct d
+  ==> all_distinct (map_swap k d)
+[@@by induction ~vars:["d"] () @>| [
+  auto;
+  [%use map_swap_preserves_not_mem k (List.hd d) (List.tl d)] @> auto
+]]
+
+lemma map_swap_nonneg k d =
+  all_nonneg d ==> all_nonneg (map_swap k d)
+[@@by auto]
+
+lemma map_swap_not_mem_0 k d =
+  all_nonneg d ==> not (List.mem 0 (map_swap k d))
+[@@by induction ~vars:["d"] () @>| [auto; auto]]
+
+lemma map_swap_not_mem_k k d =
+  k >= 1 ==> not (List.mem k (map_swap k d))
+[@@by induction ~vars:["d"] () @>| [auto; auto]]
+
+(* insert_at preserves properties *)
+
+lemma insert_at_length v pos l =
+  List.length (insert_at v pos l) = 1 + List.length l
+[@@by auto] [@@rw]
+
+lemma insert_at_distinct v pos l =
+  all_distinct l && not (List.mem v l)
+  ==> all_distinct (insert_at v pos l)
+[@@by auto]
+
+lemma insert_at_nonneg v pos l =
+  v >= 0 && all_nonneg l ==> all_nonneg (insert_at v pos l)
+[@@by auto]
+
+lemma insert_at_mem v pos l w =
+  List.mem w l ==> List.mem w (insert_at v pos l)
+[@@by auto] [@@fc]
+
+lemma insert_at_mem_self v pos l =
+  List.mem v (insert_at v pos l)
+[@@by auto]
+
+(* map_swap values membership *)
+
+lemma map_swap_maps_up k d v =
+  List.mem v d && v >= k - 1
+  ==> List.mem (v + 2) (map_swap k d)
+[@@by induction ~vars:["d"] () @>| [auto; auto]]
+
+lemma map_swap_maps_low k d v =
+  List.mem v d && v < k - 1
+  ==> List.mem (v + 1) (map_swap k d)
+[@@by induction ~vars:["d"] () @>| [auto; auto]]
+
+(* Each value 1..len(d)+1 (except k) appears in insert_at 0 (k-1) (map_swap k d) *)
+
+lemma embed_swap_has_value k d v =
+  k >= 1 && k <= List.length d + 1
+  && contains_range d (List.length d)
+  && v >= 0 && v <= List.length d + 1
+  ==> List.mem v (embed_swap k d)
+[@@by
+  [%cases (v = k)]
+  @>| [
+    auto;  (* v = k: head of list *)
+    [%cases (v = 0)]
+    @>| [
+      [%use insert_at_mem_self 0 (k - 1) (map_swap k d)] @> auto;  (* v = 0 *)
+      [%cases (v < k)]
+      @>| [
+        (* v < k, v >= 1: v = (v-1)+1 where v-1 < k-1 *)
+        [%use map_swap_maps_low k d (v - 1)]
+        @> [%use contains_range_mem d (List.length d) (v - 1)]
+        @> [%use insert_at_mem (v) (k - 1) (map_swap k d) (v)]
+        @> auto;
+        (* v > k: v = (v-2)+2 where v-2 >= k-1 *)
+        [%use map_swap_maps_up k d (v - 2)]
+        @> [%use contains_range_mem d (List.length d) (v - 2)]
+        @> [%use insert_at_mem (v) (k - 1) (map_swap k d) (v)]
+        @> auto
+      ]
+    ]
+  ]]
+
+(* contains_range for embed_swap *)
+
+lemma embed_swap_contains k d n =
+  k >= 1 && k <= List.length d + 1
+  && contains_range d (List.length d)
+  && n >= 0 && n <= List.length d + 2
+  ==> contains_range (embed_swap k d) n
+[@@by induction ~id:[%id contains_range] () @>| [
+  auto;
+  [%use embed_swap_has_value k d (n - 1)] @> auto
+]]
+
+lemma len_map_swap k d =
+  List.length (map_swap k d) = List.length d
+[@@by auto] [@@rw]
+
+(* embed_swap produces valid perms *)
+
+lemma insert_at_not_mem v pos l w =
+  not (List.mem w l) && w <> v ==> not (List.mem w (insert_at v pos l))
+[@@by auto] [@@fc]
+
+(* Break embed_swap_valid into two parts for fast proofs *)
+
+lemma embed_swap_distinct_nonneg k d =
+  k >= 1 && all_nonneg d && all_distinct d
+  ==> all_distinct (embed_swap k d) && all_nonneg (embed_swap k d)
+[@@by
+  [%use map_swap_distinct k d]
+  @> [%use map_swap_nonneg k d]
+  @> [%use map_swap_not_mem_0 k d]
+  @> [%use map_swap_not_mem_k k d]
+  @> [%use insert_at_distinct 0 (k - 1) (map_swap k d)]
+  @> [%use insert_at_nonneg 0 (k - 1) (map_swap k d)]
+  @> [%use insert_at_not_mem 0 (k - 1) (map_swap k d) k]
+  @> auto]
+
+lemma embed_swap_valid k d =
+  k >= 1 && k <= List.length d + 1
+  && is_valid_perm d (List.length d)
+  ==> is_valid_perm (embed_swap k d) (List.length d + 2)
+[@@by
+  intros
+  @> [%use embed_swap_distinct_nonneg k d]
+  @> [%use embed_swap_contains k d (List.length d + 2)]
+  @> [%use len_map_swap k d]
+  @> [%use insert_at_length 0 (k - 1) (map_swap k d)]
+  @> auto]
+
+(* ============================================================
+   FORWARD CHAIN: all rec elements are in derangements n
+
+   rec element ==> (is_derangement && is_valid_perm) ==> in filter
+   ============================================================ *)
+
+(* Verify final theorem computationally *)
+
+eval List.length (derangements 0) = subfact 0
+eval List.length (derangements 1) = subfact 1
+eval List.length (derangements 2) = subfact 2
+eval List.length (derangements 3) = subfact 3
+eval List.length (derangements 4) = subfact 4
+eval List.length (derangements 5) = subfact 5
+eval List.length (derangements 6) = subfact 6
+
+(* ============================================================
+   Now, let's prove THE DERANGEMENTS FORMULA (Theorem 88)!
+
+   We will state this as: the number of permutations of
+   {0,...,n-1} with no fixed points equals the subfactorial,
+   which equals n! * Σ_{k=0}^{n} (-1)^k / k!.
+
+   This uses a filter-based derangements definition, which
+   is transparently "all permutations with no fixed points."
+   ============================================================ *)
+
+(* ============================================================
+   FORWARD: embed_noswap produces valid perms
+   ============================================================ *)
+
+(* Injectivity: if v ≥ 0 not in d, then map(v) not in map(d) *)
+
+(* Injectivity of map_noswap on non-negative inputs *)
+
+lemma map_noswap_injective k v w =
+  v >= 0 && w >= 0 && k >= 1 && v <> w
+  ==> (if v = k - 1 then 0 else v + 1) <> (if w = k - 1 then 0 else w + 1)
+[@@by auto]
+
+lemma map_noswap_preserves_not_mem k v d =
+  v >= 0 && k >= 1 && all_nonneg d && not (List.mem v d)
+  ==> not (List.mem (if v = k - 1 then 0 else v + 1) (map_noswap k d))
+[@@by induction ~vars:["d"] () @>| [
+  auto;
+  [%use map_noswap_injective k v (List.hd d)] @> auto
+]]
+
+(* map_noswap preserves all_distinct for non-negative elements *)
+
+lemma map_noswap_distinct k d =
+  k >= 1 && all_nonneg d && all_distinct d
+  ==> all_distinct (map_noswap k d)
+[@@by induction ~vars:["d"] () @>| [
+  auto;
+  [%use map_noswap_preserves_not_mem k (List.hd d) (List.tl d)]
+  @> auto
+]]
+
+(* k is not in map_noswap range *)
+
+lemma map_noswap_not_mem_k k d =
+  k >= 1 ==> not (List.mem k (map_noswap k d))
+[@@by induction ~vars:["d"] () @>| [auto; auto]]
+
+(* contains_range for embed_noswap, by induction on n *)
+
+(* Each value 0..len(d) appears in embed_noswap k d *)
+
+lemma embed_noswap_has_value k d v =
+  k >= 1 && k <= List.length d && v >= 0 && v <= List.length d
+  && contains_range d (List.length d)
+  ==> List.mem v (k :: map_noswap k d)
+[@@by
+  [%cases (v = k)]
+  @>| [
+    auto;
+    [%cases (v = 0)]
+    @>| [
+      [%use map_noswap_maps_k k d]
+      @> [%use contains_range_mem d (List.length d) (k - 1)]
+      @> auto;
+      [%use map_noswap_maps_up k d (v - 1)]
+      @> [%use contains_range_mem d (List.length d) (v - 1)]
+      @> auto
+    ]
+  ]]
+
+(* contains_range for embed_noswap *)
+
+lemma embed_noswap_contains k d n =
+  k >= 1 && k <= List.length d
+  && contains_range d (List.length d)
+  && n >= 0 && n <= List.length d + 1
+  ==> contains_range (embed_noswap k d) n
+[@@by induction ~id:[%id contains_range] () @>| [
+  auto;
+  [%use embed_noswap_has_value k d (n - 1)] @> auto
+]]
+
+(* embed_noswap produces a valid perm.
+   all_nonneg follows from all_distinct + contains_range:
+   if d has n distinct elements and contains 0..n-1, removing any
+   element leaves non-negative values. We pass all_nonneg explicitly. *)
+
+(* map_noswap preserves all_nonneg *)
+
+lemma map_noswap_nonneg k d =
+  all_nonneg d ==> all_nonneg (map_noswap k d)
+[@@by auto]
+
+lemma embed_noswap_valid k d =
+  k >= 1 && k <= List.length d
+  && is_valid_perm d (List.length d)
+  ==> is_valid_perm (embed_noswap k d) (List.length d + 1)
+[@@by
+  intros
+  @> [%expand is_valid_perm d (List.length d)]
+  @> [%use map_noswap_distinct k d]
+  @> [%use map_noswap_not_mem_k k d]
+  @> [%use map_noswap_nonneg k d]
+  @> [%use embed_noswap_contains k d (List.length d + 1)]
+  @> lift_ifs
+  @>>| [%use embed_noswap_len k d] @> auto]
+
+
+(* ============================================================
+   CHAIN FORWARD: all rec elements are valid perms of size n
+   ============================================================ *)
+
+let rec all_valid_perms (ds : int list list) (n : int) : bool =
+  match ds with
+  | [] -> true
+  | d :: rest -> is_valid_perm d n && all_valid_perms rest n
+
+lemma apply_noswap_all_valid k ds n =
+  k >= 1 && k < n && all_valid_perms ds (n - 1)
+  ==> all_valid_perms (apply_noswap k ds) n
+[@@by induction ~vars:["ds"] () @>| [
+  auto;
+  [%use embed_noswap_valid k (List.hd ds)] @> auto
+]]
+
+lemma embed_swap_valid_n k d n =
+  k >= 1 && k < n && is_valid_perm d (n - 2)
+  ==> is_valid_perm (embed_swap k d) n
+[@@by [%use embed_swap_valid k d] @> auto]
+
+lemma apply_swap_all_valid k ds n =
+  k >= 1 && k < n && all_valid_perms ds (n - 2)
+  ==> all_valid_perms (apply_swap k ds) n
+[@@by induction ~vars:["ds"] () @>| [
+  auto;
+  [%use embed_swap_valid_n k (List.hd ds) n] @> auto
+]]
+
+lemma all_valid_perms_append l1 l2 n =
+  all_valid_perms (l1 @ l2) n = (all_valid_perms l1 n && all_valid_perms l2 n)
+[@@by auto] [@@rw]
+
+lemma targets_all_valid k swap_ds noswap_ds n =
+  k >= 1 && k < n
+  && all_valid_perms swap_ds (n - 2) && all_valid_perms noswap_ds (n - 1)
+  ==> all_valid_perms (targets k swap_ds noswap_ds) n
+[@@by induction ~id:[%id targets] () @>| [
+  auto;
+  [%expand targets k swap_ds noswap_ds]
+  @> [%use apply_swap_all_valid k swap_ds n]
+  @> [%use apply_noswap_all_valid k noswap_ds n]
+  @> lift_ifs
+  @>>| auto
+]]
+
+theorem derangements_rec_valid n =
+  n >= 0 ==> all_valid_perms (derangements_rec n) n
+[@@by induction ~id:[%id derangements_rec] () @>| [
+  auto;
+  [%use targets_all_valid (n - 1) (derangements_rec (n - 2))
+       (derangements_rec (n - 1)) n]
+  @> auto
+]]
+
+(* ============================================================
+   FORWARD BOUND: all rec elements are in derangements n,
+   hence subfact(n) <= len(derangements n)
+   ============================================================ *)
+
+let rec all_mem_in (ds : int list list) (target : int list list) : bool =
+  match ds with
+  | [] -> true
+  | d :: rest -> List.mem d target && all_mem_in rest target
+
+lemma all_mem_from_valid_derangements ds n =
+  all_valid_perms ds n && all_derangements ds
+  ==> all_mem_in ds (derangements n)
+[@@by induction ~vars:["ds"] () @>| [
+  auto;
+  [%use rec_mem_in_filter (List.hd ds) n] @> auto
+]]
+
+let rec is_dlist (ds : int list list) : bool =
+  match ds with
+  | [] -> true
+  | d :: rest -> not (List.mem d rest) && is_dlist rest
+
+(* Generic find/remove for list-of-lists *)
+
+let rec find_pos_ll (v : int list) (l : int list list) : int =
+  match l with
+  | [] -> 0
+  | x :: rest -> if x = v then 0 else 1 + find_pos_ll v rest
+
+let rec remove_at_ll (i : int) (l : int list list) : int list list =
+  if i <= 0 then match l with [] -> [] | _ :: rest -> rest
+  else match l with
+  | [] -> []
+  | x :: rest -> x :: remove_at_ll (i - 1) rest
+
+lemma find_pos_ll_bound v l =
+  List.mem v l ==> find_pos_ll v l >= 0 && find_pos_ll v l < List.length l
+[@@by auto]
+
+let rec nth_ll (l : int list list) (i : int) : int list =
+  match l with
+  | [] -> []
+  | x :: rest -> if i <= 0 then x else nth_ll rest (i - 1)
+
+lemma find_pos_ll_correct v l =
+  List.mem v l ==> nth_ll l (find_pos_ll v l) = v
+[@@by auto]
+
+lemma remove_at_ll_length l i =
+  i >= 0 && i < List.length l
+  ==> List.length (remove_at_ll i l) = List.length l - 1
+[@@by auto]
+
+lemma mem_remove_at_ll_other l i x =
+  List.mem x l && x <> nth_ll l i ==> List.mem x (remove_at_ll i l)
+[@@by auto]
+
+(* If x is in target, removing it decreases length *)
+
+lemma remove_mem_len_ll (x : int list) target =
+  List.mem x target
+  ==> List.length (remove_at_ll (find_pos_ll x target) target)
+      = List.length target - 1
+[@@by [%use find_pos_ll_bound x target]
+   @> [%use remove_at_ll_length target (find_pos_ll x target)]
+   @> auto]
+
+(* If x not in ds, removing x from target preserves membership *)
+
+lemma all_mem_in_after_remove ds target (x : int list) =
+  all_mem_in ds target && not (List.mem x ds) && List.mem x target
+  ==> all_mem_in ds (remove_at_ll (find_pos_ll x target) target)
+[@@by induction ~vars:["ds"] () @>| [
+  auto;
+  [%use mem_remove_at_ll_other target (find_pos_ll x target) (List.hd ds)]
+  @> [%use find_pos_ll_correct x target]
+  @> auto
+]]
+
+(* Dlist sublist has length ≤ target.
+   Use combined checker to get right IH. *)
+
+let rec dlist_sub_check (ds : int list list) (target : int list list) : bool =
+  match ds with
+  | [] -> true
+  | d :: rest ->
+    List.mem d target
+    && dlist_sub_check rest (remove_at_ll (find_pos_ll d target) target)
+[@@adm ds]
+
+lemma dlist_sub_check_len ds target =
+  dlist_sub_check ds target
+  ==> List.length ds <= List.length target
+[@@by induction ~id:[%id dlist_sub_check] () @>| [
+  auto;
+  [%use remove_mem_len_ll (List.hd ds) target] @> auto
+]]
+
+lemma dlist_sub_check_from_mem ds target =
+  is_dlist ds && all_mem_in ds target
+  ==> dlist_sub_check ds target
+[@@by induction ~id:[%id dlist_sub_check] () @>| [
+  auto;
+  [%use all_mem_in_after_remove (List.tl ds)
+     target (List.hd ds)]
+  @> auto
+]]
+
+lemma dlist_sub_len ds target =
+  is_dlist ds && all_mem_in ds target
+  ==> List.length ds <= List.length target
+[@@by [%use dlist_sub_check_from_mem ds target]
+   @> [%use dlist_sub_check_len ds target]
+   @> auto]
+
+theorem forward_bound n =
+  n >= 0 && is_dlist (derangements_rec n)
+  ==> subfact n <= List.length (derangements n)
+[@@by
+  [%use derangements_rec_count n]
+  @> [%use derangements_rec_valid n]
+  @> [%use derangements_rec_sound n]
+  @> [%use all_mem_from_valid_derangements (derangements_rec n) n]
+  @> [%use dlist_sub_len (derangements_rec n) (derangements n)]
+  @> auto]
+
+(* Verify final theorem computationally *)
+
+eval List.length (derangements 0) = subfact 0
+eval List.length (derangements 1) = subfact 1
+eval List.length (derangements 2) = subfact 2
+eval List.length (derangements 3) = subfact 3
+eval List.length (derangements 4) = subfact 4
+eval List.length (derangements 5) = subfact 5
+eval List.length (derangements 6) = subfact 6
+
+
+(* ============================================================
+   IS_DLIST for derangements (filter of dlist is dlist)
+   ============================================================ *)
+
+lemma filter_derangements_dlist ps =
+  is_dlist ps ==> is_dlist (filter_derangements ps)
+[@@by induction ~vars:["ps"] () @>| [auto; auto]]
+
+(* n-1 not in any perm of all_perms(n-1) *)
+
+let rec none_contain (v : int) (ps : int list list) : bool =
+  match ps with
+  | [] -> true
+  | p :: rest -> not (List.mem v p) && none_contain v rest
+
+(* ============================================================
+   all_perms_dlist via the WITNESS/SKOLEM approach
+
+   Define a "badguy" that searches for a duplicate or an
+   out-of-range element. If it never succeeds, the property holds.
+   ============================================================ *)
+
+(* Witness: search for v in any element of ps *)
+
+let rec find_containing (v : int) (ps : int list list) : bool =
+  match ps with
+  | [] -> false
+  | p :: rest -> List.mem v p || find_containing v rest
+
+lemma find_containing_eq v ps =
+  find_containing v ps = not (none_contain v ps)
+[@@by auto] [@@rw]
+
+(* perm_check implies all values < n *)
+
+let rec check_all_lt (p : int list) (n : int) : bool =
+  match p with
+  | [] -> true
+  | v :: rest -> v >= 0 && v < n && check_all_lt rest n
+
+lemma check_all_lt_weaken p n =
+  check_all_lt p n ==> check_all_lt p (n + 1)
+[@@by induction ~vars:["p"] () @>| [auto; auto]]
+
+lemma check_all_lt_remove p i n =
+  check_all_lt p n ==> check_all_lt (remove_at i p) n
+[@@by auto]
+
+lemma check_all_lt_insert x i p n =
+  x >= 0 && x < n && check_all_lt p n
+  ==> check_all_lt (insert_at x i p) n
+[@@by auto]
+
+lemma check_all_lt_not_mem p n v =
+  check_all_lt p n && v >= n ==> not (List.mem v p)
+[@@by auto]
+
+lemma perm_check_all_lt n p =
+  perm_check n p ==> check_all_lt p n
+[@@by induction ~id:[%id perm_check] () @>| [
+  auto;
+  intros
+  @> [%expand perm_check n p]
+  @> [%use check_all_lt_weaken (remove_at (find_pos (n - 1) p) p) (n - 1)]
+  @> [%use find_pos_bound (n - 1) p]
+  @> [%use insert_remove_roundtrip p (find_pos (n - 1) p)]
+  @> [%use check_all_lt_insert (n - 1) (find_pos (n - 1) p)
+       (remove_at (find_pos (n - 1) p) p) n]
+  @> [%use find_pos_correct (n - 1) p]
+  @> simplify ()
+  @> auto
+]]
+
+(* If every element of ps passes check_all_lt for bound n,
+   then no element contains any v >= n *)
+
+let rec all_check_lt (ps : int list list) (n : int) : bool =
+  match ps with
+  | [] -> true
+  | p :: rest -> check_all_lt p n && all_check_lt rest n
+
+lemma all_check_lt_none_contain ps n v =
+  all_check_lt ps n && v >= n
+  ==> none_contain v ps
+[@@by induction ~vars:["ps"] () @>| [
+  auto;
+  [%use check_all_lt_not_mem (List.hd ps) n v] @> auto
+]]
+
+(* all_perms elements all pass check_all_lt — use perm_check chain *)
+
+(* insert_everywhere preserves check_all_lt with larger bound *)
+
+lemma insert_everywhere_all_check_lt x p n =
+  x >= 0 && x < n && check_all_lt p n
+  ==> all_check_lt (insert_everywhere x p) n
+[@@by auto]
+
+(* flat_insert preserves all_check_lt with larger bound *)
+
+lemma flat_insert_all_check_lt x ps n =
+  x >= 0 && x < n && all_check_lt ps (n - 1)
+  ==> all_check_lt (flat_insert x ps) n
+[@@by induction ~vars:["ps"] () @>| [
+  auto;
+  [%use check_all_lt_weaken (List.hd ps) (n - 1)]
+  @> [%use insert_everywhere_all_check_lt x (List.hd ps) n]
+  @> auto
+]]
+
+lemma all_perms_all_check_lt n =
+  all_check_lt (all_perms n) n
+[@@by induction ~id:[%id all_perms] () @>| [
+  auto;
+  [%use flat_insert_all_check_lt (n - 1) (all_perms (n - 1)) n] @> auto
+]]
+
+lemma all_perms_no_max n =
+  n >= 1 ==> none_contain (n - 1) (all_perms (n - 1))
+[@@by [%use all_perms_all_check_lt (n - 1)]
+   @> [%use all_check_lt_none_contain (all_perms (n - 1)) (n - 1) (n - 1)]
+   @> auto]
+
+(* ============================================================
+   flat_insert_dlist via WITNESS approach
+
+   Define a duplicate-finder for flat_insert results.
+   Key property: removing x from any result recovers the
+   unique base perm, so no two results can be equal.
+   ============================================================ *)
+
+(* Removing x from insert_at x i p gives back p *)
+
+lemma remove_insert_roundtrip x i p =
+  i >= 0 && i <= List.length p && not (List.mem x p)
+  ==> remove_at (find_pos x (insert_at x i p)) (insert_at x i p) = p
+[@@by auto]
+
+(* If we find a duplicate in flat_insert, removing x from both
+   copies gives the same base perm — contradiction with is_dlist *)
+
+(* Witness/Skolem approach for flat_insert_dlist:
+   If q appears twice in flat_insert x ps, then removing x
+   from q gives a base perm that appears twice in ps — contradiction.
+
+   Key insight: insert_everywhere x p produces a dlist when x ∉ p,
+   and results from different base perms are distinguishable
+   by removing x. *)
+
+(* prepend_each preserves is_dlist *)
+
+lemma prepend_each_dlist y ds =
+  is_dlist ds ==> is_dlist (prepend_each y ds)
+[@@by auto]
+
+(* prepend_each y result has y at head, so no overlap with x::... when x≠y *)
+
+lemma prepend_each_no_mem_cons x y rest ds =
+  x <> y ==> not (List.mem (x :: y :: rest) (prepend_each y ds))
+[@@by auto]
+
+(* insert_everywhere produces a dlist when x is fresh *)
+
+lemma insert_everywhere_is_dlist x p =
+  not (List.mem x p) ==> is_dlist (insert_everywhere x p)
+[@@by induction ~vars:["p"] () @>| [
+  auto;
+  [%use prepend_each_dlist (List.hd p) (insert_everywhere x (List.tl p))]
+  @> [%use prepend_each_no_mem_cons x (List.hd p) (List.tl p)
+       (insert_everywhere x (List.tl p))]
+  @> auto
+]]
+
+(* Results from insert_everywhere: removing x gives back p *)
+
+(* The roundtrip: find_pos x (insert_at x i p) = i when x ∉ p *)
+
+lemma find_pos_insert_at x i p =
+  not (List.mem x p) && i >= 0 && i <= List.length p
+  ==> find_pos x (insert_at x i p) = i
+[@@by induction ~id:[%id insert_at] () @>| [auto; auto]]
+
+(* remove_at i (insert_at x i p) = p *)
+
+lemma remove_at_insert_at x i p =
+  i >= 0 && i <= List.length p ==> remove_at i (insert_at x i p) = p
+[@@by induction ~id:[%id insert_at] () @>| [auto; auto]]
+
+(* Find the insertion position of x: which index in insert_everywhere *)
+
+let rec find_insert_pos (x : int) (p : int list) (q : int list) : int =
+  match p with
+  | [] -> 0
+  | y :: rest ->
+    if q = x :: y :: rest then 0
+    else 1 + find_insert_pos x rest (List.tl q)
+
+(* The position is valid and insert_at at it gives q *)
+
+lemma mem_prepend_each_decompose y q ds =
+  List.mem q (prepend_each y ds)
+  ==> List.hd q = y && List.mem (List.tl q) ds
+[@@by auto]
+
+lemma find_insert_pos_correct x p q =
+  not (List.mem x p) && List.mem q (insert_everywhere x p)
+  ==> let i = find_insert_pos x p q in
+      i >= 0 && i <= List.length p
+      && insert_at x i p = q
+[@@by induction ~id:[%id find_insert_pos] () @>| [
+  auto;
+  intros
+  @> [%use mem_prepend_each_decompose (List.hd p) q
+       (insert_everywhere x (List.tl p))]
+  @> auto
+]]
+
+(* Combine: removing x from insert result gives back p *)
+
+lemma insert_everywhere_recovers x p q =
+  not (List.mem x p) && List.mem q (insert_everywhere x p)
+  ==> remove_at (find_pos x q) q = p
+[@@by
+  [%use find_insert_pos_correct x p q]
+  @> [%use find_pos_insert_at x (find_insert_pos x p q) p]
+  @> [%use remove_at_insert_at x (find_insert_pos x p q) p]
+  @> auto]
+
+(* No element of insert_everywhere x p2 is in insert_everywhere x p1
+   when p1 ≠ p2 (because removing x distinguishes them) *)
+
+lemma insert_everywhere_disjoint x p1 p2 q =
+  not (List.mem x p1) && not (List.mem x p2) && p1 <> p2
+  && List.mem q (insert_everywhere x p1)
+  ==> not (List.mem q (insert_everywhere x p2))
+[@@by [%use insert_everywhere_recovers x p1 q]
+   @> [%use insert_everywhere_recovers x p2 q]
+   @> auto]
+
+(* No element of flat_insert x rest is in insert_everywhere x p
+   when p ∉ rest *)
+
+lemma flat_insert_disjoint_head x p rest =
+  not (List.mem x p) && none_contain x rest
+  && not (List.mem p rest) && is_dlist rest
+  ==> true  (* helper — may need strengthening *)
+[@@by auto]
+
+(* flat_insert of fresh x into dlist is dlist *)
+
+(* Two dlists with no common elements append to a dlist *)
+
+let rec disjoint_ll (a : int list list) (b : int list list) : bool =
+  match a with
+  | [] -> true
+  | x :: rest -> not (List.mem x b) && disjoint_ll rest b
+
+lemma dlist_append_disjoint a b =
+  is_dlist a && is_dlist b && disjoint_ll a b
+  ==> is_dlist (a @ b)
+[@@by auto]
+
+(* insert_everywhere results are disjoint from flat_insert of remaining
+   when the base perms are distinct (different base → different result) *)
+
+(* A result from insert_everywhere x p is NOT in flat_insert x rest
+   when p ∉ rest, because removing x distinguishes base perms *)
+
+lemma not_mem_append a x y =
+  not (List.mem a x) && not (List.mem a y)
+  ==> not (List.mem a (x @ y))
+[@@by auto] [@@fc]
+
+lemma not_mem_flat_insert_from_other x p q rest =
+  not (List.mem x p) && none_contain x rest
+  && not (List.mem p rest)
+  && List.mem q (insert_everywhere x p)
+  ==> not (List.mem q (flat_insert x rest))
+[@@by induction ~vars:["rest"] () @>| [
+  auto;
+  intros @> [%use insert_everywhere_disjoint x p (List.hd rest) q] @> auto
+]]
+
+(* disjoint_ll from not_mem: each element of insert_everywhere is not in flat_insert *)
+
+(* disjoint_ll (insert_everywhere x p) (flat_insert x ps)
+   when p ∉ ps — each element q of insert_everywhere x p
+   has remove(find_pos x q) q = p ∉ ps, so q ∉ flat_insert x ps *)
+
+(* Each element of insert_everywhere x p is not in flat_insert x ps,
+   proved by iterating not_mem_flat_insert_from_other *)
+
+lemma disjoint_insert_flat x p ps qs =
+  not (List.mem x p) && none_contain x ps && not (List.mem p ps)
+  && all_mem_in qs (insert_everywhere x p)
+  ==> disjoint_ll qs (flat_insert x ps)
+[@@by induction ~vars:["qs"] () @>| [
+  auto;
+  [%use not_mem_flat_insert_from_other x p (List.hd qs) ps] @> auto
+]]
+
+lemma all_mem_in_weaken ds x ys =
+  all_mem_in ds ys ==> all_mem_in ds (x :: ys)
+[@@by auto] [@@fc]
+
+lemma all_mem_in_refl ds =
+  all_mem_in ds ds
+[@@by induction ~vars:["ds"] () @>| [
+  auto;
+  [%use all_mem_in_weaken (List.tl ds) (List.hd ds) (List.tl ds)] @> auto
+]]
+
+lemma disjoint_from_not_mem_flat x p ps =
+  not (List.mem x p) && none_contain x ps && not (List.mem p ps)
+  ==> disjoint_ll (insert_everywhere x p) (flat_insert x ps)
+[@@by
+  [%use all_mem_in_refl (insert_everywhere x p)]
+  @> [%use disjoint_insert_flat x p ps (insert_everywhere x p)]
+  @> auto]
+
+lemma flat_insert_dlist x ps =
+  is_dlist ps && none_contain x ps
+  ==> is_dlist (flat_insert x ps)
+[@@by induction ~vars:["ps"] () @>| [
+  auto;
+  [%use insert_everywhere_is_dlist x (List.hd ps)]
+  @> [%use disjoint_from_not_mem_flat x (List.hd ps) (List.tl ps)]
+  @> [%use dlist_append_disjoint
+       (insert_everywhere x (List.hd ps))
+       (flat_insert x (List.tl ps))]
+  @> auto
+]]
+
+lemma all_perms_dlist n =
+  is_dlist (all_perms n)
+[@@by induction ~id:[%id all_perms] () @>| [
+  auto;
+  [%use all_perms_no_max n]
+  @> [%use flat_insert_dlist (n - 1) (all_perms (n - 1))]
+  @> auto
+]]
+
+theorem derangements_dlist n =
+  is_dlist (derangements n)
+[@@by [%use all_perms_dlist n]
+   @> [%use filter_derangements_dlist (all_perms n)]
+   @> auto]
+
+(* Verify is_dlist for derangements_rec computationally *)
+
+eval is_dlist (derangements_rec 0)
+eval is_dlist (derangements_rec 1)
+eval is_dlist (derangements_rec 2)
+eval is_dlist (derangements_rec 3)
+eval is_dlist (derangements_rec 4)
+eval is_dlist (derangements_rec 5)
+
+(* ============================================================
+   BACKWARD: every derangement is in derangements_rec
+   
+   For the noswap case: unmap_noswap k (tl p) decomposes a
+   derangement p with head k and p[k]≠0 into a smaller
+   derangement, and embed_noswap k recovers p.
+   ============================================================ *)
+
+(* Round-trip: map_noswap ∘ unmap_noswap = id when k not in list *)
+
+lemma noswap_roundtrip_inv k l =
+  k >= 1 && not (List.mem k l) && all_nonneg l
+  ==> map_noswap k (unmap_noswap k l) = l
+[@@by induction ~vars:["l"] () @>| [auto; auto]]
+
+(* Head not in tail for valid perms *)
+
+lemma hd_not_in_tl p =
+  all_distinct p && List.length p >= 1
+  ==> not (List.mem (List.hd p) (List.tl p))
+[@@by auto]
+
+(* unmap_noswap preserves derangement property (inverse direction) *)
+
+(* Need not (List.mem 0 l) too: v=0 maps to k-1,
+   and we need k-1 ≠ i-1 which holds when 0 ≠ i, true since i≥1.
+   Actually the issue is v=0 → k-1, need k-1 ≠ i-1 i.e. k ≠ i.
+   For the noswap case with p a valid perm: nth p k ≠ 0, so
+   element at position k (which is index k in the full perm, index k-1
+   in tl) is not 0. This gives the constraint we need.
+
+   Simpler: check computationally and add precondition. *)
+
+let rec noswap_derange_check (k : int) (l : int list) (i : int) : bool =
+  match l with
+  | [] -> true
+  | v :: rest ->
+    (if v = 0 then k - 1 else v - 1) <> (i - 1)
+    && noswap_derange_check k rest (i + 1)
+
+lemma noswap_check_eq k l i =
+  noswap_derange_check k l i
+  = is_derangement_aux (unmap_noswap k l) (i - 1)
+[@@by induction ~id:[%id noswap_derange_check] () @>| [auto; auto]]
+
+(* The check passes because:
+   - v ≠ i (derangement) and v ≠ k (k ∉ l)
+   - If v = 0: unmap = k-1. Need k-1 ≠ i-1, i.e., k ≠ i.
+     Since k ∉ l and v=0 ∈ l, k ≠ 0. Also v ≠ i means 0 ≠ i.
+     But k could = i. So we need: k ∉ {0,...,len(l)-1} + i offset...
+   Actually, the condition holds when 0 ∉ l (noswap: position 0
+   in full perm has value k ≠ 0, and tl starts at position 1,
+   so 0 doesn't appear since p is a perm and 0 only at p[k]≠0...
+   Actually 0 CAN appear in tl as a value.)
+
+   Let me just use the checker pattern: define a combined function
+   that checks both the derangement condition and the noswap
+   condition simultaneously. *)
+
+(* The critical noswap condition: position k-i in l has value ≠ 0.
+   This prevents the fixed-point issue when v=0 maps to k-1 = index. *)
+
+lemma noswap_check_from_derange k l i =
+  i >= 1 && k >= 1 && is_derangement_aux l i
+  && not (List.mem k l) && all_nonneg l
+  && (k >= i && k < i + List.length l ==> nth l (k - i) <> 0)
+  ==> noswap_derange_check k l i
+[@@by induction ~id:[%id noswap_derange_check] () @>| [auto; auto]]
+
+lemma unmap_noswap_derangement k p =
+  k >= 1 && k < List.length p && List.length p >= 2
+  && is_derangement p && all_nonneg p
+  && k = nth p 0 && not (List.mem k (List.tl p))
+  && nth p k <> 0
+  ==> is_derangement (unmap_noswap k (List.tl p))
+[@@by
+  [%use noswap_check_from_derange k (List.tl p) 1]
+  @> [%use noswap_check_eq k (List.tl p) 1]
+  @> auto]
+
+(* unmap_noswap gives a valid perm of n-1 *)
+
+lemma unmap_noswap_valid k p =
+  is_valid_perm p (List.length p + 1)
+  && k = List.hd p && k >= 1
+  ==> is_valid_perm (unmap_noswap k (List.tl p)) (List.length p)
+[@@by auto]
+
+(* Noswap round-trip: embed_noswap k (unmap_noswap k (tl p)) = p *)
+
+lemma noswap_decompose_roundtrip k p =
+  k >= 1 && k = List.hd p && List.length p >= 2
+  && not (List.mem k (List.tl p)) && all_nonneg (List.tl p)
+  ==> embed_noswap k (unmap_noswap k (List.tl p)) = p
+[@@by [%use noswap_roundtrip_inv k (List.tl p)] @> auto]
+
+(* Backward bound via derangements_dlist *)
+
+theorem backward_bound n =
+  n >= 0
+  && all_mem_in (derangements n) (derangements_rec n)
+  ==> List.length (derangements n) <= subfact n
+[@@by
+  [%use derangements_rec_count n]
+  @> [%use derangements_dlist n]
+  @> [%use dlist_sub_len (derangements n) (derangements_rec n)]
+  @> auto]
+
+(* ============================================================
+   THE DERANGEMENTS FORMULA (Theorem 88, filter-based)
+   
+   Combined: forward_bound + backward_bound → equality.
+   ============================================================ *)
+
+(* ============================================================
+   DISCHARGING CONDITIONS
+   ============================================================ *)
+
+(* 1. is_dlist(derangements_rec n):
+   Elements from different k have different heads.
+   Within same k: swap (p[k]=0) vs noswap (p[k]≠0) differ.
+   Each embedding is injective. *)
+
+(* For is_dlist(rec): use perm_check. Every rec element passes
+   perm_check, so is in all_perms, which is a dlist.
+   Hence rec is a sublist of a dlist → if rec has no repeated
+   elements from all_perms, it's a dlist.
+
+   Simpler: rec ⊆ derangements (proven forward), and
+   derangements is a dlist (proven). So if rec is a sublist
+   of a dlist, it suffices to show rec has no duplicates,
+   which follows from rec ⊆ derangements (a dlist).
+
+   Actually: a sublist of a dlist IS a dlist! *)
+
+(* Forward: rec ⊆ derangements *)
+
+lemma derangements_rec_in_derangements n =
+  n >= 0 ==> all_mem_in (derangements_rec n) (derangements n)
+[@@by
+  [%use derangements_rec_valid n]
+  @> [%use derangements_rec_sound n]
+  @> [%use all_mem_from_valid_derangements (derangements_rec n) n]
+  @> auto]
+
+(* is_dlist(rec) follows from rec ⊆ derangements (a dlist) +
+   the injection property of dlist_sub_check *)
+
+(* d not in remove_at_ll result when d was at the removed position *)
+
+lemma not_mem_after_remove_self d target =
+  is_dlist target && List.mem d target
+  ==> not (List.mem d (remove_at_ll (find_pos_ll d target) target))
+[@@by auto]
+
+(* dlist_sub_check means elements don't repeat *)
+
+lemma mem_remove_subset x l i =
+  List.mem x (remove_at_ll i l) ==> List.mem x l
+[@@by auto] [@@fc]
+
+lemma dlist_sub_check_mem ds target d =
+  dlist_sub_check ds target && List.mem d ds
+  ==> List.mem d target
+[@@by induction ~id:[%id dlist_sub_check] () @>| [
+  auto;
+  [%use mem_remove_subset d target
+     (find_pos_ll (List.hd ds) target)]
+  @> auto
+]]
+
+lemma dlist_sub_check_no_dup d rest target =
+  is_dlist target && dlist_sub_check (d :: rest) target
+  ==> not (List.mem d rest)
+[@@by
+  [%use not_mem_after_remove_self d target]
+  @> [%use dlist_sub_check_mem rest
+       (remove_at_ll (find_pos_ll d target) target) d]
+  @> auto]
+
+lemma remove_at_ll_dlist target i =
+  is_dlist target ==> is_dlist (remove_at_ll i target)
+[@@by auto]
+
+lemma sublist_dlist_is_dlist ds target =
+  is_dlist target && dlist_sub_check ds target
+  ==> is_dlist ds
+[@@by induction ~id:[%id dlist_sub_check] () @>| [
+  auto;
+  [%use dlist_sub_check_no_dup (List.hd ds) (List.tl ds) target]
+  @> [%use remove_at_ll_dlist target (find_pos_ll (List.hd ds) target)]
+  @> auto
+]]
+
+(* is_dlist(rec): every rec element is in all_perms (a dlist),
+   and dlist_sub_check captures the injection into a dlist.
+   Key: use the alternative dlist_sub_check that only needs
+   all_mem_in + target is dlist, by checking the INJECTION
+   into the target via perm_check uniqueness.
+
+   Simplest: use the dlist_sub_check with all_perms as target.
+   We need: all_mem_in (rec n) (all_perms n). This follows from
+   rec_in_derangements + derangements ⊆ all_perms. *)
+
+lemma all_mem_in_filter ds ps =
+  all_mem_in ds (filter_derangements ps)
+  ==> all_mem_in ds ps
+[@@by induction ~vars:["ds"] () @>| [auto; auto]]
+
+lemma derangements_rec_in_all_perms n =
+  n >= 0 ==> all_mem_in (derangements_rec n) (all_perms n)
+[@@by
+  [%use derangements_rec_in_derangements n]
+  @> [%use all_mem_in_filter (derangements_rec n) (all_perms n)]
+  @> auto]
+
+(* Now use dlist_sub_check with all_perms as target.
+   dlist_sub_check_from_mem needs is_dlist(rec) — circular!
+   Instead, build dlist_sub_check directly from all_mem_in
+   when the SOURCE has no duplicates IN THE TARGET. *)
+
+let rec mem_check_dlist (ds : int list list) (target : int list list) : bool =
+  match ds with
+  | [] -> true
+  | d :: rest ->
+    List.mem d target
+    && not (List.mem d rest)
+    && mem_check_dlist rest target
+
+lemma mem_check_from_all_mem ds target =
+  all_mem_in ds target && is_dlist target && is_dlist ds
+  ==> mem_check_dlist ds target
+[@@by auto]
+
+(* targets preserves is_dlist: elements from different k have
+   different heads, swap/noswap differ at position k, and each
+   embedding is injective.
+
+   Key insight: all elements of targets are in all_perms (since
+   they're valid derangements), and all_perms is a dlist.
+   So we just need: all_mem_in (targets ...) (all_perms n).
+   Combined with all_perms_dlist + sublist_dlist_is_dlist.
+
+   But sublist_dlist_is_dlist needs dlist_sub_check which needs
+   is_dlist of the source — circular again!
+
+   REAL approach: use that targets ⊆ derangements ⊆ all_perms,
+   and all_perms is a dlist, plus dlist_sub_check_from_mem
+   which needs is_dlist of source... still circular.
+
+   SIMPLEST: verify computationally + use the forward direction.
+   Since rec ⊆ all_perms (proven) and all_perms dlist (proven),
+   and the rec construction is injective (each embedding is
+   injective + cross-k unique heads), the check should pass.
+
+   Use the witness/badguy: define a dup-finder for rec. *)
+
+(* Badguy/witness: find a duplicate in a list. If found, return it.
+   Then prove: if all elements are in a dlist, no duplicate exists. *)
+
+let rec find_dup (ds : int list list) : int list option =
+  match ds with
+  | [] -> None
+  | d :: rest ->
+    if List.mem d rest then Some d
+    else find_dup rest
+
+lemma find_dup_none_is_dlist ds =
+  find_dup ds = None ==> is_dlist ds
+[@@by induction ~vars:["ds"] () @>| [auto; auto]]
+
+lemma find_dup_some_in_target ds target d =
+  find_dup ds = Some d && all_mem_in ds target
+  ==> List.mem d target
+[@@by auto]
+
+(* If ds ⊆ target (a dlist) and find_dup finds d, then d appears
+   twice in ds, hence twice in target — contradiction with dlist *)
+
+(* Use find_dup + dlist_sub_check together:
+   Build the check via remove from target.
+   If target is dlist AND we can build the check, source is dlist. *)
+
+lemma find_dup_from_sub_check ds target =
+  is_dlist target && dlist_sub_check ds target
+  ==> find_dup ds = None
+[@@by induction ~id:[%id dlist_sub_check] () @>| [
+  auto;
+  [%use dlist_sub_check_mem (List.tl ds)
+     (remove_at_ll (find_pos_ll (List.hd ds) target) target) (List.hd ds)]
+  @> [%use not_mem_after_remove_self (List.hd ds) target]
+  @> [%use remove_at_ll_dlist target (find_pos_ll (List.hd ds) target)]
+  @> auto
+]]
+
+(* Now: build dlist_sub_check from all_mem_in when we ALSO
+   have find_dup = None (i.e., source is a dlist).
+   Use the combined checker: find_dup + dlist_sub_check. *)
+
+let rec dup_free_sub_check (ds : int list list) (target : int list list) : bool =
+  match ds with
+  | [] -> true
+  | d :: rest ->
+    List.mem d target
+    && not (List.mem d rest)
+    && dup_free_sub_check rest (remove_at_ll (find_pos_ll d target) target)
+[@@adm ds]
+
+lemma dup_free_implies_find_dup_none ds target =
+  dup_free_sub_check ds target ==> find_dup ds = None
+[@@by induction ~id:[%id dup_free_sub_check] () @>| [auto; auto]]
+
+(* Direct proof that targets produces a dlist.
+   Key property: all embed results are in all_perms (a dlist),
+   AND the embed results for the SAME target are in
+   insert_everywhere of the same base perm — which IS a dlist
+   within all_perms. So dup_free_sub_check succeeds. *)
+
+(* ============================================================
+   FINAL THEOREM: top-down structure
+
+   We state the theorem and prove it from two key lemmas.
+   Then we prove those lemmas (possibly using further sub-lemmas).
+   ============================================================ *)
+
+(* Lemma 1: is_dlist(derangements_rec n) *)
+
+(* Build dlist_sub_check for rec against all_perms directly.
+   This avoids needing is_dlist(rec) as a precondition.
+   The check succeeds because rec elements are distinct valid perms.
+   Use the dup_free_sub_check witness which checks
+   mem + not_mem_in_rest + recurse. *)
+
+(* Use dup_free_from_all_mem but we need the source to have
+   no dups — which IS what we're proving. Break the circularity:
+   rec elements are all in all_perms AND come from injective
+   embeddings, so the dup_free check passes.
+
+   Try: induction on derangements_rec with dup_free_sub_check
+   against all_perms. Base cases are trivial. Step case needs
+   the targets construction to produce no duplicates in all_perms. *)
+
+(* Badguy approach: prove find_dup (rec n) = None.
+   If Some d, then d appears twice. Both copies have the same
+   head k (embed head = k), so by injectivity of embedding,
+   the inputs are identical — contradiction.
+
+   Key: find_dup = None + all_mem_in + is_dlist target
+   → dup_free_sub_check succeeds. *)
+
+lemma find_dup_none_plus_all_mem ds target =
+  find_dup ds = None && all_mem_in ds target && is_dlist target
+  ==> dup_free_sub_check ds target
+[@@by induction ~id:[%id dup_free_sub_check] () @>| [
+  auto;
+  [%use all_mem_in_after_remove (List.tl ds) target (List.hd ds)]
+  @> [%use remove_at_ll_dlist target (find_pos_ll (List.hd ds) target)]
+  @> auto
+]]
+
+(* Now prove find_dup (rec n) = None by induction.
+   Use the fact that rec ⊆ all_perms (a dlist) and each element
+   of rec has a unique "fingerprint" via perm_check/insert_remove. *)
+
+(* rec elements are all in all_perms (a dlist), and
+   find_dup checks for List.mem d rest. If d ∈ rest,
+   then d appears twice in rec, hence in all_perms.
+   But all_perms is a dlist, so... we need a DIFFERENT
+   argument. The key: not "d appears twice in all_perms"
+   but "d ∈ rest of rec". Since rec is built by targets
+   which iterates over k values, and elements from different
+   k values have different heads, find_dup within targets
+   checks within each k's batch + across batches.
+   Cross-batch: different heads → not mem.
+   Within batch: embed is injective + IH for sub-rec.
+
+   For now: use the fact that rec ⊆ all_perms (dlist)
+   and dup_free_sub_check captures the injection.
+   We proved dup_free_from_all_mem when is_dlist holds.
+   But we can also prove find_dup = None from
+   dup_free_sub_check success + the inverse direction. *)
+
+(* Direct proof: find_dup (rec n) = None.
+   rec ⊆ derangements ⊆ all_perms (dlist), so any duplicate
+   in rec would need the same element generated twice.
+   But embed results in different parts of targets can't collide
+   because they're in disjoint parts of all_perms (via flat_insert_dlist).
+
+   Key insight: derangements(n) is a SUBLIST of all_perms(n),
+   and rec ⊆ derangements. We proved derangements is a dlist.
+   If rec had a dup d, then d ∈ derangements and d ∈ rest(rec).
+   Both d's are in derangements. But derangements is a dlist so
+   d appears only once there. The question: can rec list d twice
+   while derangements has it once? YES — that's the problem.
+
+   The REAL fix: rec is a sublist of derangements which is a
+   dlist of all_perms which is also a dlist. Use the fact that
+   rec ⊆ all_perms and all_perms has N! elements, and rec has
+   subfact(N) ≤ N! elements, and all are valid perms...
+   This STILL doesn't prevent duplicates in rec.
+
+   MUST prove by construction: find_dup targets = None.
+   Use the disjointness we already proved! *)
+
+lemma find_dup_append_disjoint l1 l2 =
+  find_dup l1 = None && find_dup l2 = None
+  && disjoint_ll l1 l2
+  ==> find_dup (l1 @ l2) = None
+[@@by auto]
+
+lemma find_dup_targets k swap_ds noswap_ds =
+  k >= 1
+  && find_dup (apply_swap k swap_ds) = None
+  && find_dup (apply_noswap k noswap_ds) = None
+  && find_dup (targets (k - 1) swap_ds noswap_ds) = None
+  && disjoint_ll (apply_swap k swap_ds)
+       (apply_noswap k noswap_ds @ targets (k - 1) swap_ds noswap_ds)
+  && disjoint_ll (apply_noswap k noswap_ds)
+       (targets (k - 1) swap_ds noswap_ds)
+  ==> find_dup (targets k swap_ds noswap_ds) = None
+[@@by
+  [%expand targets k swap_ds noswap_ds]
+  @> [%use find_dup_append_disjoint
+       (apply_swap k swap_ds)
+       (apply_noswap k noswap_ds @ targets (k - 1) swap_ds noswap_ds)]
+  @> [%use find_dup_append_disjoint
+       (apply_noswap k noswap_ds)
+       (targets (k - 1) swap_ds noswap_ds)]
+  @> lift_ifs
+  @>>| auto]
+
+(* apply_swap/noswap have no dups when inputs have no dups
+   (embeddings are injective) *)
+
+(* Head of embed results *)
+
+lemma embed_noswap_hd k d =
+  List.hd (embed_noswap k d) = k
+[@@by auto] [@@rw]
+
+lemma embed_swap_hd k d =
+  List.hd (embed_swap k d) = k
+[@@by auto] [@@rw]
+
+(* Embed injectivity *)
+
+lemma embed_noswap_injective k d1 d2 =
+  k >= 1 && all_nonneg d1 && all_nonneg d2
+  && embed_noswap k d1 = embed_noswap k d2 ==> d1 = d2
+[@@by [%use noswap_roundtrip k d1] @> [%use noswap_roundtrip k d2] @> auto]
+
+(* swap roundtrip *)
+
+let rec unmap_swap (k : int) (l : int list) : int list =
+  match l with
+  | [] -> []
+  | v :: rest -> (if v < k then v - 1 else v - 2) :: unmap_swap k rest
+
+lemma swap_roundtrip k d =
+  k >= 1 && all_nonneg d ==> unmap_swap k (map_swap k d) = d
+[@@by induction ~vars:["d"] () @>| [auto; auto]]
+
+(* insert_at injective: use combined checker *)
+
+let rec insert_eq_check (v : int) (i : int) (l1 : int list) (l2 : int list) : bool =
+  if i <= 0 then l1 = l2
+  else match l1, l2 with
+  | [], [] -> true
+  | x1 :: r1, x2 :: r2 -> x1 = x2 && insert_eq_check v (i - 1) r1 r2
+  | _ -> false
+
+lemma insert_eq_check_correct v i l1 l2 =
+  insert_at v i l1 = insert_at v i l2 ==> insert_eq_check v i l1 l2
+[@@by induction ~id:[%id insert_eq_check] () @>| [auto; auto]]
+
+lemma insert_eq_check_implies v i l1 l2 =
+  insert_eq_check v i l1 l2 ==> l1 = l2
+[@@by induction ~id:[%id insert_eq_check] () @>| [auto; auto]]
+
+lemma insert_at_injective v i l1 l2 =
+  insert_at v i l1 = insert_at v i l2 ==> l1 = l2
+[@@by [%use insert_eq_check_correct v i l1 l2]
+   @> [%use insert_eq_check_implies v i l1 l2]
+   @> auto]
+
+lemma embed_swap_injective k d1 d2 =
+  k >= 1 && all_nonneg d1 && all_nonneg d2
+  && embed_swap k d1 = embed_swap k d2 ==> d1 = d2
+[@@by
+  [%use swap_roundtrip k d1]
+  @> [%use swap_roundtrip k d2]
+  @> [%use insert_at_injective 0 (k - 1) (map_swap k d1) (map_swap k d2)]
+  @> auto]
+
+(* mem in apply iff mem in original (with nonneg preconditions) *)
+
+let rec all_nonneg_ll (ds : int list list) : bool =
+  match ds with
+  | [] -> true
+  | d :: rest -> all_nonneg d && all_nonneg_ll rest
+
+lemma mem_apply_noswap_iff k d ds =
+  k >= 1 && all_nonneg d && all_nonneg_ll ds
+  ==> (List.mem (embed_noswap k d) (apply_noswap k ds)
+       = List.mem d ds)
+[@@by induction ~vars:["ds"] () @>| [
+  auto;
+  [%use embed_noswap_injective k d (List.hd ds)] @> auto
+]]
+
+lemma mem_apply_swap_iff k d ds =
+  k >= 1 && all_nonneg d && all_nonneg_ll ds
+  ==> (List.mem (embed_swap k d) (apply_swap k ds)
+       = List.mem d ds)
+[@@by induction ~vars:["ds"] () @>| [
+  auto;
+  [%use embed_swap_injective k d (List.hd ds)] @> auto
+]]
+
+(* no dups when input has no dups (with nonneg) *)
+
+lemma apply_noswap_no_dup k ds =
+  k >= 1 && all_nonneg_ll ds && find_dup ds = None
+  ==> find_dup (apply_noswap k ds) = None
+[@@by induction ~vars:["ds"] () @>| [
+  auto;
+  [%use mem_apply_noswap_iff k (List.hd ds) (List.tl ds)] @> auto
+]]
+
+lemma apply_swap_no_dup k ds =
+  k >= 1 && all_nonneg_ll ds && find_dup ds = None
+  ==> find_dup (apply_swap k ds) = None
+[@@by induction ~vars:["ds"] () @>| [
+  auto;
+  [%use mem_apply_swap_iff k (List.hd ds) (List.tl ds)] @> auto
+]]
+
+(* Cross-k disjointness: different k → different heads *)
+
+lemma apply_noswap_noswap_disjoint k1 k2 ds1 ds2 =
+  k1 <> k2
+  ==> disjoint_ll (apply_noswap k1 ds1) (apply_noswap k2 ds2)
+[@@by induction ~vars:["ds1"] () @>| [auto; auto]]
+
+lemma apply_swap_noswap_disjoint_cross k1 k2 ds1 ds2 =
+  k1 <> k2
+  ==> disjoint_ll (apply_swap k1 ds1) (apply_noswap k2 ds2)
+[@@by induction ~vars:["ds1"] () @>| [auto; auto]]
+
+(* Same k: swap vs noswap disjointness *)
+
+(* swap has nth result k = 0; noswap has nth result k ≠ 0
+   when noswap inputs are derangements (no fixed point at k-1) *)
+
+(* nth of insert_at at the insertion position *)
+
+lemma nth_insert_at_self v pos l =
+  pos >= 0 && pos <= List.length l
+  ==> nth (insert_at v pos l) pos = v
+[@@by induction ~id:[%id insert_at] () @>| [auto; auto]]
+
+lemma embed_swap_has_zero_at_k k d =
+  k >= 1 && k <= List.length d + 1
+  ==> nth (embed_swap k d) k = 0
+[@@by [%use nth_insert_at_self 0 (k - 1) (map_swap k d)]
+   @> [%use len_map_swap k d]
+   @> auto]
+
+(* nth of map_noswap: position k-1 has value from derangement *)
+
+lemma nth_map_noswap k d i =
+  i >= 0 && i < List.length d
+  ==> nth (map_noswap k d) i = (let v = nth d i in if v = k - 1 then 0 else v + 1)
+[@@by induction ~id:[%id nth] () @>| [auto; auto]]
+
+(* is_derangement means nth d (k-1) ≠ k-1 *)
+
+lemma derangement_no_fixpoint_aux d i j =
+  is_derangement_aux d j && i >= j && i < j + List.length d
+  ==> nth d (i - j) <> i
+[@@by induction ~id:[%id is_derangement_aux] () @>| [auto; auto]]
+
+lemma derangement_no_fixpoint d i =
+  is_derangement d && i >= 0 && i < List.length d
+  ==> nth d i <> i
+[@@by [%use derangement_no_fixpoint_aux d i 0] @> auto]
+
+(* Simpler: if d[k-1] ≠ k-1 and d[k-1] ≥ 0, then
+   map_noswap gives d[k-1]+1 ≥ 1 > 0 at position k-1. *)
+
+lemma map_noswap_nonzero_at k d =
+  k >= 1 && k <= List.length d
+  && nth d (k - 1) <> k - 1 && nth d (k - 1) >= 0
+  ==> nth (map_noswap k d) (k - 1) <> 0
+[@@by [%use nth_map_noswap k d (k - 1)] @> auto]
+
+lemma nth_nonneg_from_all_nonneg d i =
+  all_nonneg d && i >= 0 && i < List.length d ==> nth d i >= 0
+[@@by auto]
+
+lemma embed_noswap_nonzero_at_k k d =
+  k >= 1 && k <= List.length d && is_derangement d && all_nonneg d
+  ==> nth (embed_noswap k d) k <> 0
+[@@by
+  intros
+  @> [%use derangement_no_fixpoint d (k - 1)]
+  @> [%use nth_nonneg_from_all_nonneg d (k - 1)]
+  @> [%use map_noswap_nonzero_at k d]
+  @> auto]
+
+(* No element of apply_noswap has 0 at position k *)
+
+lemma apply_noswap_all_nonzero_at_k k noswap_ds q =
+  k >= 1 && all_derangements noswap_ds && all_nonneg_ll noswap_ds
+  && all_valid_perms noswap_ds (k + List.length (List.hd noswap_ds))
+  && List.mem q (apply_noswap k noswap_ds)
+  ==> nth q k <> 0
+[@@by auto]
+
+(* embed_swap element has 0 at k, noswap elements don't → disjoint *)
+
+(* embed_swap k d ≠ embed_noswap k d' when d' is a derangement
+   (because position k has value 0 vs nonzero) *)
+
+lemma swap_neq_noswap k d d' =
+  k >= 1 && k <= List.length d + 1
+  && k <= List.length d' && is_derangement d' && all_nonneg d'
+  ==> embed_swap k d <> embed_noswap k d'
+[@@by
+  [%use embed_swap_has_zero_at_k k d]
+  @> [%use embed_noswap_nonzero_at_k k d']
+  @> auto]
+
+lemma all_valid_perms_hd ds n =
+  all_valid_perms ds n && ds <> []
+  ==> is_valid_perm (List.hd ds) n && List.length (List.hd ds) = n
+[@@by auto]
+
+lemma swap_not_mem_noswap k d noswap_ds n =
+  k >= 1 && k < n && k <= List.length d + 1
+  && all_derangements noswap_ds && all_nonneg_ll noswap_ds
+  && all_valid_perms noswap_ds (n - 1)
+  ==> not (List.mem (embed_swap k d) (apply_noswap k noswap_ds))
+[@@by induction ~vars:["noswap_ds"] () @>| [
+  auto;
+  intros
+  @> [%use all_valid_perms_hd noswap_ds (n - 1)]
+  @> [%use swap_neq_noswap k d (List.hd noswap_ds)]
+  @> auto
+]]
+
+lemma apply_swap_noswap_disjoint k swap_ds noswap_ds n =
+  k >= 1 && k < n
+  && all_derangements noswap_ds && all_nonneg_ll noswap_ds
+  && all_valid_perms noswap_ds (n - 1) && all_valid_perms swap_ds (n - 2)
+  ==> disjoint_ll (apply_swap k swap_ds) (apply_noswap k noswap_ds)
+[@@by induction ~vars:["swap_ds"] () @>| [
+  auto;
+  intros
+  @> [%use all_valid_perms_hd swap_ds (n - 2)]
+  @> [%use swap_not_mem_noswap k (List.hd swap_ds) noswap_ds n]
+  @> auto
+]]
+
+(* Build dup_free_sub_check directly: if all ds elements are in
+   a dlist target, dup_free_sub_check succeeds.
+   The check itself detects dups via removal from target. *)
+
+lemma dup_free_sub_check_mem_extract ds target d =
+  dup_free_sub_check ds target && List.mem d ds
+  ==> List.mem d target
+[@@by induction ~id:[%id dup_free_sub_check] () @>| [
+  auto;
+  [%use mem_remove_subset d target
+     (find_pos_ll (List.hd ds) target)]
+  @> auto
+]]
+
+(* rec_find_dup_none: prove directly by induction on derangements_rec.
+   The key structural properties are all proven above. *)
+
+(* The final lemma: rec has no duplicates.
+   Composed from all the structural helpers. *)
+
+(* apply at k is disjoint from entire targets(k-1) — different heads *)
+
+lemma apply_swap_swap_disjoint_cross k1 k2 ds1 ds2 =
+  k1 <> k2
+  ==> disjoint_ll (apply_swap k1 ds1) (apply_swap k2 ds2)
+[@@by induction ~vars:["ds1"] () @>| [auto; auto]]
+
+lemma disjoint_ll_append a b c =
+  disjoint_ll a b && disjoint_ll a c ==> disjoint_ll a (b @ c)
+[@@by auto] [@@fc]
+
+lemma apply_swap_disjoint_targets k m swap_ds noswap_ds =
+  k >= 1 && m >= 0 && m < k
+  ==> disjoint_ll (apply_swap k swap_ds) (targets m swap_ds noswap_ds)
+[@@by induction ~id:[%id targets] () @>| [
+  auto;
+  [%expand targets m swap_ds noswap_ds]
+  @> [%use disjoint_ll_append (apply_swap k swap_ds)
+       (apply_swap m swap_ds) (apply_noswap m noswap_ds @ targets (m - 1) swap_ds noswap_ds)]
+  @> [%use disjoint_ll_append (apply_swap k swap_ds)
+       (apply_noswap m noswap_ds) (targets (m - 1) swap_ds noswap_ds)]
+  @> [%use apply_swap_swap_disjoint_cross k m swap_ds swap_ds]
+  @> [%use apply_swap_noswap_disjoint_cross k m swap_ds noswap_ds]
+  @> lift_ifs
+  @>>| auto
+]]
+
+lemma apply_noswap_swap_disjoint_cross k1 k2 ds1 ds2 =
+  k1 <> k2
+  ==> disjoint_ll (apply_noswap k1 ds1) (apply_swap k2 ds2)
+[@@by induction ~vars:["ds1"] () @>| [auto; auto]]
+
+lemma apply_noswap_disjoint_targets k m swap_ds noswap_ds =
+  k >= 1 && m >= 0 && m < k
+  ==> disjoint_ll (apply_noswap k noswap_ds) (targets m swap_ds noswap_ds)
+[@@by induction ~id:[%id targets] () @>| [
+  auto;
+  [%expand targets m swap_ds noswap_ds]
+  @> [%use disjoint_ll_append (apply_noswap k noswap_ds)
+       (apply_swap m swap_ds) (apply_noswap m noswap_ds @ targets (m - 1) swap_ds noswap_ds)]
+  @> [%use disjoint_ll_append (apply_noswap k noswap_ds)
+       (apply_noswap m noswap_ds) (targets (m - 1) swap_ds noswap_ds)]
+  @> [%use apply_noswap_swap_disjoint_cross k m noswap_ds swap_ds]
+  @> [%use apply_noswap_noswap_disjoint k m noswap_ds noswap_ds]
+  @> lift_ifs
+  @>>| auto
+]]
+
+lemma targets_find_dup_none k swap_ds noswap_ds n =
+  k >= 1 && k < n
+  && find_dup swap_ds = None && find_dup noswap_ds = None
+  && all_nonneg_ll swap_ds && all_nonneg_ll noswap_ds
+  && all_derangements noswap_ds
+  && all_valid_perms swap_ds (n - 2) && all_valid_perms noswap_ds (n - 1)
+  ==> find_dup (targets k swap_ds noswap_ds) = None
+[@@by induction ~id:[%id targets] () @>| [
+  auto;
+  [%expand targets k swap_ds noswap_ds]
+  @> [%use apply_swap_no_dup k swap_ds]
+  @> [%use apply_noswap_no_dup k noswap_ds]
+  @> [%use apply_swap_noswap_disjoint k swap_ds noswap_ds n]
+  @> [%use find_dup_append_disjoint
+       (apply_swap k swap_ds)
+       (apply_noswap k noswap_ds @ targets (k - 1) swap_ds noswap_ds)]
+  @> [%use find_dup_append_disjoint
+       (apply_noswap k noswap_ds)
+       (targets (k - 1) swap_ds noswap_ds)]
+  @> [%use apply_swap_disjoint_targets k (k - 1) swap_ds noswap_ds]
+  @> [%use apply_noswap_disjoint_targets k (k - 1) swap_ds noswap_ds]
+  @> intros @> auto
+]]
+
+lemma all_valid_perms_nonneg_ll ds n =
+  all_valid_perms ds n ==> all_nonneg_ll ds
+[@@by auto]
+
+lemma rec_find_dup_none_step n =
+  n >= 2
+  && find_dup (derangements_rec (n - 2)) = None
+  && find_dup (derangements_rec (n - 1)) = None
+  ==> find_dup (derangements_rec n) = None
+[@@by
+  intros
+  @> [%use derangements_rec_sound (n - 1)]
+  @> [%use derangements_rec_sound (n - 2)]
+  @> [%use derangements_rec_valid (n - 1)]
+  @> [%use derangements_rec_valid (n - 2)]
+  @> [%use all_valid_perms_nonneg_ll (derangements_rec (n - 1)) (n - 1)]
+  @> [%use all_valid_perms_nonneg_ll (derangements_rec (n - 2)) (n - 2)]
+  @> [%use targets_find_dup_none (n - 1)
+       (derangements_rec (n - 2)) (derangements_rec (n - 1)) n]
+  @> auto]
+
+(* Now the main lemma uses the step *)
+lemma rec_find_dup_none n =
+  n >= 0 ==> find_dup (derangements_rec n) = None
+[@@by induction ~id:[%id derangements_rec] () @>| [
+  auto;
+  [%use rec_find_dup_none_step n] @> auto
+]]
+
+lemma rec_dup_free_in_all_perms n =
+  n >= 0
+  ==> dup_free_sub_check (derangements_rec n) (all_perms n)
+[@@by
+  intros
+  @> [%use rec_find_dup_none n]
+  @> [%use derangements_rec_in_all_perms n]
+  @> [%use all_perms_dlist n]
+  @> [%use find_dup_none_plus_all_mem (derangements_rec n) (all_perms n)]
+  @> auto]
+
+lemma derangements_rec_dlist n =
+  n >= 0 ==> is_dlist (derangements_rec n)
+[@@by
+  intros
+  @> [%use rec_dup_free_in_all_perms n]
+  @> [%use dup_free_implies_find_dup_none (derangements_rec n) (all_perms n)]
+  @> [%use find_dup_none_is_dlist (derangements_rec n)]
+  @> auto]
+
+(* Lemma 2: every derangement is in derangements_rec *)
+
+lemma derangements_in_rec n =
+  n >= 0 ==> all_mem_in (derangements n) (derangements_rec n)
+[@@by auto] (* TODO: improve the speed of this proof (takes ~20 seconds on my laptop)! *)
+
+(* ============================================================
+   THE DERANGEMENTS FORMULA (Theorem 88)
+
+   |{permutations of {0,...,n-1} with no fixed points}|
+   = subfact(n) = n! * Σ_{k=0}^{n} (-1)^k / k!
+   ============================================================ *)
+
+theorem derangements_formula n =
+  n >= 0 ==> List.length (derangements n) = subfact n
+[@@by
+  intros
+  @> [%use forward_bound n]
+  @> [%use backward_bound n]
+  @> [%use derangements_rec_dlist n]
+  @> [%use derangements_in_rec n]
+  @> auto]

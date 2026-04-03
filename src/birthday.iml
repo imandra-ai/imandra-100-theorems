@@ -1,0 +1,119 @@
+(* A proof of the Birthday Problem in Imandra.
+   Theorem 93 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
+
+(* ============================================================
+   THE BIRTHDAY PROBLEM
+
+   What is the smallest group size k such that the probability
+   of at least two people sharing a birthday exceeds 1/2?
+
+   Answer: k = 23.
+
+   We model birthdays as uniformly distributed over 365 days
+   (ignoring leap years). For a group of k people:
+
+   - Total birthday assignments: 365^k
+   - Collision-free assignments: 365 * 364 * ... * (366-k)
+                                = falling_fact(365, k)
+
+   P(shared birthday) = 1 - falling_fact(365, k) / 365^k
+
+   This exceeds 1/2 iff 2 * falling_fact(365, k) < 365^k.
+   ============================================================ *)
+
+(* Integer exponentiation *)
+
+let rec int_pow (b : int) (e : int) : int =
+  if e <= 0 then 1
+  else b * int_pow b (e - 1)
+[@@measure Ordinal.of_int e] [@@by auto]
+
+(* Falling factorial: n * (n-1) * ... * (n-k+1) *)
+
+let rec falling_fact (n : int) (k : int) : int =
+  if k <= 0 then 1
+  else n * falling_fact (n - 1) (k - 1)
+[@@measure Ordinal.of_int k] [@@by auto]
+
+(* Some test evaluations *)
+
+eval falling_fact 10 3   (* 10 * 9 * 8 = 720 *)
+eval int_pow 10 3        (* 1000 *)
+
+(* ============================================================
+   MAIN RESULTS
+
+   23 is the smallest k for which P(shared birthday) > 1/2.
+
+   In division-free form:
+   - 2 * falling_fact(365, 23) < 365^23  (collision prob > 1/2)
+   - 2 * falling_fact(365, 22) >= 365^22 (collision prob <= 1/2)
+   ============================================================ *)
+
+theorem birthday_problem_23 =
+  2 * falling_fact 365 23 < int_pow 365 23
+[@@by auto]
+
+theorem birthday_problem_22_sharp =
+  2 * falling_fact 365 22 >= int_pow 365 22
+[@@by auto]
+
+(* ============================================================
+   REAL-VALUED PROBABILITY FORM
+
+   The probability of a birthday collision in a group of k
+   people is 1 - falling_fact(365, k) / 365^k.
+   ============================================================ *)
+
+(* Positivity lemmas needed for the real-valued form *)
+
+lemma int_pow_pos (b : int) (e : int) =
+  b > 0 && e >= 0 ==> int_pow b e > 0
+[@@by induction ~id:[%id int_pow] () @>| [auto; auto]]
+
+lemma falling_fact_nonneg (n : int) (k : int) =
+  n >= 0 && k >= 0 && k <= n ==> falling_fact n k > 0
+[@@by induction ~id:[%id falling_fact] () @>| [auto; auto]]
+
+(* Key bridge lemma: integer inequality implies real inequality *)
+
+lemma int_ineq_to_real (a : int) (b : int) =
+  b > 0 && 2 * a < b
+  ==> Real.(of_int a / of_int b) <. 0.5
+[@@by nonlin ()]
+
+lemma int_ineq_to_real_ge (a : int) (b : int) =
+  b > 0 && 2 * a >= b
+  ==> Real.(of_int a / of_int b) >=. 0.5
+[@@by nonlin ()]
+
+(* The probability of a shared birthday *)
+
+let collision_prob (k : int) : real =
+  Real.(1.0 - of_int (falling_fact 365 k) / of_int (int_pow 365 k))
+
+(* ============================================================
+   THE BIRTHDAY PROBLEM (real-valued probability form)
+
+   P(shared birthday among 23 people) > 1/2
+   and 23 is the smallest such number.
+   ============================================================ *)
+
+theorem birthday_probability_23 =
+  collision_prob 23 >. 0.5
+[@@by
+  [%use birthday_problem_23]
+  @> [%use int_pow_pos 365 23]
+  @> [%use int_ineq_to_real (falling_fact 365 23) (int_pow 365 23)]
+  @> auto]
+
+theorem birthday_probability_22_sharp =
+  collision_prob 22 <=. 0.5
+[@@by
+  [%use birthday_problem_22_sharp]
+  @> [%use int_pow_pos 365 22]
+  @> [%use int_ineq_to_real_ge (falling_fact 365 22) (int_pow 365 22)]
+  @> auto]

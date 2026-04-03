@@ -1,0 +1,149 @@
+(* A proof of the Factor and Remainder Theorem in Imandra.
+   Theorem 89 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
+
+(* ============================================================
+   UNIVARIATE POLYNOMIALS
+
+   Polynomials are represented as coefficient lists in ascending
+   order of degree: [c0; c1; ...; cn] represents
+
+       c0 + c1*x + c2*x^2 + ... + cn*x^n
+
+   Evaluation uses Horner's method:
+     poly_eval [c0; c1; ...; cn] x = c0 + x*(c1 + x*(...(cn)...))
+   ============================================================ *)
+
+let rec poly_eval (p : real list) (x : real) : real =
+  match p with
+  | [] -> 0.0
+  | c :: rest -> Real.(c + x * poly_eval rest x)
+
+(* Some example evaluations *)
+
+eval poly_eval [1.0; 2.0; 3.0] 0.0    (* 1 + 0 + 0 = 1.0 *)
+eval poly_eval [1.0; 2.0; 3.0] 1.0    (* 1 + 2 + 3 = 6.0 *)
+eval poly_eval [1.0; 2.0; 1.0] (-1.0) (* (1+x)^2 at x=-1 = 0.0 *)
+
+(* ============================================================
+   SYNTHETIC DIVISION
+
+   synth_div p a computes the quotient polynomial q such that
+
+       p(x) = (x - a) * q(x) + p(a)
+
+   Recursively: if p = c :: rest with rest non-empty, then
+   the quotient is rest(a) :: synth_div(rest, a).
+
+   Intuition: from p(x) = c + x*rest(x) and the IH
+   rest(x) = (x-a)*q'(x) + rest(a), we get
+   p(x) - p(a) = (x-a)*(rest(a) + x*q'(x)).
+   ============================================================ *)
+
+let rec synth_div (p : real list) (a : real) : real list =
+  match p with
+  | [] -> []
+  | [_] -> []
+  | _ :: rest -> (poly_eval rest a) :: synth_div rest a
+
+(* Example: divide (1 + 2x + x^2) = (1+x)^2 by (x+1), i.e., a = -1
+   Quotient should be (1 + x) = [1.0; 1.0] *)
+
+eval synth_div [1.0; 2.0; 1.0] (-1.0) (* = [1.0; 1.0] *)
+
+(* Example: divide (1 + 2x + x^2) by (x - 2), remainder = p(2) = 9
+   Quotient should be (4 + x) = [4.0; 1.0] *)
+
+eval synth_div [1.0; 2.0; 1.0] 2.0    (* = [4.0; 1.0] *)
+eval poly_eval [1.0; 2.0; 1.0] 2.0    (* = 9.0 (the remainder) *)
+
+(* ============================================================
+   KEY ALGEBRAIC IDENTITY
+
+   For the inductive step of the Remainder Theorem, we need:
+
+     c + x*((x-a)*q + ra) = (x-a)*(ra + x*q) + (c + a*ra)
+
+   This captures the relationship between the Horner expansion
+   of p(x) and the decomposition via synth_div.
+   ============================================================ *)
+
+lemma remainder_step_algebra (c : real) (x : real) (a : real) (ra : real) (q : real) =
+  Real.(c + x * ((x - a) * q + ra)) = Real.((x - a) * (ra + x * q) + (c + a * ra))
+[@@by nonlin ()]
+
+(* ============================================================
+   THE REMAINDER THEOREM (Theorem 89)
+
+   For any polynomial p and value a:
+
+       p(x) = (x - a) * q(x) + p(a)
+
+   where q = synth_div p a is the quotient from synthetic
+   division. The remainder when dividing p(x) by (x - a)
+   is always p(a).
+
+   Proof: by induction on the structure of p, following
+   synth_div's recursion.
+
+   Base cases (p = [] or p = [c]):
+     Immediate: 0 = (x-a)*0 + 0, or c = (x-a)*0 + c.
+
+   Inductive case (p = c :: rest, rest non-empty):
+     By IH: rest(x) = (x-a)*q'(x) + rest(a)
+     Then:  p(x) = c + x*rest(x)
+                  = c + x*((x-a)*q'(x) + rest(a))
+                  = (x-a)*(rest(a) + x*q'(x)) + (c + a*rest(a))
+                  = (x-a)*synth_div(p,a)(x) + p(a)            □
+   ============================================================ *)
+
+theorem remainder_theorem p a x =
+  poly_eval p x = Real.((x - a) * poly_eval (synth_div p a) x + poly_eval p a)
+[@@by induction () @>| [
+  auto;  (* p = [] *)
+  (* p = c :: rest: case split on whether rest is empty *)
+  [%cases (List.tl p = [])] @>| [
+    auto;  (* rest = [], i.e., p = [c] *)
+    (* rest non-empty: use IH + algebra *)
+    [%use remainder_step_algebra
+      (List.hd p) x a
+      (poly_eval (List.tl p) a)
+      (poly_eval (synth_div (List.tl p) a) x)]
+    @> auto
+  ]
+]]
+
+(* ============================================================
+   THE FACTOR THEOREM
+
+   (x - a) divides p(x) if and only if p(a) = 0.
+
+   Forward direction: If p(a) = 0, then from the Remainder
+   Theorem, p(x) = (x - a) * q(x) + 0 = (x - a) * q(x).
+   ============================================================ *)
+
+theorem factor_theorem p a x =
+  poly_eval p a = 0.0 ==>
+  poly_eval p x = Real.((x - a) * poly_eval (synth_div p a) x)
+[@@by [%use remainder_theorem p a x] @> auto]
+
+(* Converse direction: any polynomial of the form (x - a) * q(x)
+   vanishes at x = a, since (a - a) = 0. *)
+
+theorem factor_theorem_converse (q : real list) (a : real) =
+  Real.((a - a) * poly_eval q a) = 0.0
+[@@by auto]
+
+(* The Factor Theorem (biconditional):
+   (x - a) divides p(x) iff p(a) = 0.
+
+   Forward: remainder_theorem + p(a) = 0 → remainder vanishes.
+   Backward: substituting x = a gives (a-a)*q(a) = 0. *)
+
+theorem factor_remainder p a x =
+  poly_eval p a = 0.0
+  = (poly_eval p x = Real.((x - a) * poly_eval (synth_div p a) x)
+     && poly_eval p a = 0.0)
+[@@by [%use remainder_theorem p a x] @> auto]
