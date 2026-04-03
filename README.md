@@ -4,7 +4,7 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **20/100**:
+Currently, we have proven **23/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
@@ -24,8 +24,11 @@ Currently, we have proven **20/100**:
 74\. [Principle of Mathematical Induction](#thm-74)  
 78\. [Cauchy-Schwarz Inequality](#thm-78)  
 80\. [The Fundamental Theorem of Arithmetic](#thm-80)  
-85\. [Divisibility by 3 Rule](#thm-85)  
-91\. [The Triangle Inequality](#thm-91)  
+85\. [Divisibility by 3 Rule](#thm-85)
+88\. [Derangements Formula](#thm-88)
+89\. [Factor and Remainder Theorem](#thm-89)
+91\. [The Triangle Inequality](#thm-91)
+93\. [The Birthday Problem](#thm-93)
 
 More coming soon!
 
@@ -549,6 +552,83 @@ theorem triangle_inequality (x:R2.vec) (y:R2.vec) (nx:real) (ny:real) (nxy:real)
   nx >= 0.0 && ny >= 0.0 && nxy >= 0.0 &&
   nx * nx = norm x && ny * ny = norm y && nxy * nxy = norm (add x y)
   ==> nxy <= nx + ny
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-88"></a>
+## 88. Derangements Formula
+
+[Source: src/derangements.iml](src/derangements.iml)
+
+*Statement (informal):*
+
+The number of derangements (permutations with no fixed points) of $\{0, \ldots, n-1\}$ is
+
+$$D(n) = n! \sum_{k=0}^{n} \frac{(-1)^k}{k!}.$$
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem derangements_formula n =
+  n >= 0 ==> List.length (derangements n) = subfact n
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-89"></a>
+## 89. Factor and Remainder Theorem
+
+[Source: src/factor_remainder.iml](src/factor_remainder.iml)
+
+*Statement (informal):*
+
+For any polynomial $p(x)$ and value $a$, the remainder when $p(x)$ is divided by $(x - a)$ is $p(a)$.  That is,
+
+$$p(x) = (x - a) \cdot q(x) + p(a)$$
+
+for some polynomial $q$.  As a corollary, $(x - a)$ divides $p(x)$ iff $p(a) = 0$.
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem remainder_theorem p a x =
+  poly_eval p x = Real.((x - a) * poly_eval (synth_div p a) x + poly_eval p a)
+
+theorem factor_remainder p a x =
+  poly_eval p a = 0.0
+  = (poly_eval p x = Real.((x - a) * poly_eval (synth_div p a) x)
+     && poly_eval p a = 0.0)
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-93"></a>
+## 93. The Birthday Problem
+
+[Source: src/birthday.iml](src/birthday.iml)
+
+*Statement (informal):*
+
+The smallest number of people for which the probability of a shared birthday exceeds $\frac{1}{2}$ is $23$.
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem birthday_probability_23 =
+  collision_prob 23 >. 0.5
+
+theorem birthday_probability_22_sharp =
+  collision_prob 22 <=. 0.5
 ```
 </details>
 
