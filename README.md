@@ -24,11 +24,11 @@ Currently, we have proven **23/100**:
 74\. [Principle of Mathematical Induction](#thm-74)  
 78\. [Cauchy-Schwarz Inequality](#thm-78)  
 80\. [The Fundamental Theorem of Arithmetic](#thm-80)  
-85\. [Divisibility by 3 Rule](#thm-85)
-88\. [Derangements Formula](#thm-88)
-89\. [Factor and Remainder Theorem](#thm-89)
-91\. [The Triangle Inequality](#thm-91)
-93\. [The Birthday Problem](#thm-93)
+85\. [Divisibility by 3 Rule](#thm-85)  
+88\. [Derangements Formula](#thm-88)  
+89\. [Factor and Remainder Theorem](#thm-89)  
+91\. [The Triangle Inequality](#thm-91)  
+93\. [The Birthday Problem](#thm-93)  
 
 More coming soon!
 
