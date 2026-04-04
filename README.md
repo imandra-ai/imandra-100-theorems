@@ -175,13 +175,12 @@ theorem am_gm_power xs =
   n >= 1 && all_nonneg xs ==>
   real_pow (sum xs) n >=. real_pow (Real.of_int n) n *. prod xs
 
-theorem am_gm xs g n =
-  n >= 1
-  && List.length xs = n
+theorem am_gm xs g =
+  xs <> []
   && all_nonneg xs
   && g >=. 0.0
-  && real_pow g n = prod xs
-  ==> Real.of_int n *. g <=. sum xs
+  && real_pow g (List.length xs) = prod xs
+  ==> Real.of_int (List.length xs) *. g <=. sum xs
 ```
 </details>
 

@@ -434,14 +434,14 @@ lemma pow_le_cancel (a : real) (b : real) (n : int) =
    if g ≥ 0 and g^n = prod(xs), then n*g ≤ sum(xs).
    ============================================================ *)
 
-theorem am_gm xs g n =
-  n >= 1
-  && List.length xs = n
+theorem am_gm xs g =
+  xs <> []
   && all_nonneg xs
   && g >=. 0.0
-  && real_pow g n = prod xs
-  ==> Real.of_int n *. g <=. sum xs
+  && real_pow g (List.length xs) = prod xs
+  ==> Real.of_int (List.length xs) *. g <=. sum xs
 [@@by
+  let n = List.length xs in
   intros
   @> [%use am_gm_power xs]
   @> [%use real_pow_mul (Real.of_int n) g n]
