@@ -144,6 +144,5 @@ theorem factor_theorem_converse (q : real list) (a : real) =
 
 theorem factor_remainder p a x =
   poly_eval p a = 0.0
-  = (poly_eval p x = Real.((x - a) * poly_eval (synth_div p a) x)
-     && poly_eval p a = 0.0)
+  = (poly_eval p x = Real.((x - a) * poly_eval (synth_div p a) x))
 [@@by [%use remainder_theorem p a x] @> auto]
