@@ -1,0 +1,450 @@
+(* A proof of the Arithmetic Mean / Geometric Mean Inequality in Imandra.
+   Theorem 38 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
+
+(* =============================================================
+   First, let's sketch our ImandraX proof strategy.
+
+   We'll prove AM-GM, i.e., for non-negative reals a₁, ..., aₙ:
+
+       (a₁ + a₂ + ... + aₙ) / n ≥ (a₁ · a₂ · ... · aₙ)^(1/n)
+
+   In division-free form, this is:
+   
+        g ≥ 0 /\ g^n = ∏aᵢ  ==>  n · g ≤ Σaᵢ.
+
+   We prove this in the equivalent "power form" S^n ≥ n^n · P,
+   by direct induction on the list. 
+   
+   The key step absorbs one element a into a list with sum S and 
+   product P using Young's inequality: 
+   
+        m^m · (a+S)^(m+1) ≥ (m+1)^(m+1) · a · S^m.
+
+   Young's inequality itself follows from a two-variable
+   generalization of Hirschhorn's identity: 
+    
+        x·f(n) − y·g(n) = x·f(n−1) + n·y^(n−1)·(x−y)²
+
+   shows the inductive step factors as a sum of non-negative
+   products, yielding 
+   
+        x^(n+1) ≥ y^n · ((n+1)x − ny). 
+        
+   The classical form with geometric mean g is then recovered via
+   power monotonicity: S^n ≥ (ng)^n implies S ≥ ng.
+   ============================================================= *)
+
+let rec prod (xs : real list) : real =
+  match xs with
+  | [] -> 1.0
+  | x :: rest -> Real.(x * prod rest)
+
+let rec sum (xs : real list) : real =
+  match xs with
+  | [] -> 0.0
+  | x :: rest -> Real.(x + sum rest)
+
+let rec all_nonneg (xs : real list) : bool =
+  match xs with
+  | [] -> true
+  | x :: rest -> x >=. 0.0 && all_nonneg rest
+
+let real_pow_measure (g : real) (n : int) = Ordinal.of_int (max 0 n)
+
+let rec real_pow (g : real) (n : int) : real =
+  if n <= 0 then 1.0
+  else let rest = real_pow g (n - 1) in Real.(g * rest)
+[@@measure real_pow_measure g n]
+
+(* ============================================================
+   BASE CASE: AM-GM for n = 2
+
+   For a, b ≥ 0: (a + b)² ≥ 4ab, i.e., (a - b)² ≥ 0.
+   In our form: if g² = a*b then 2*g ≤ a + b.
+   ============================================================ *)
+
+lemma square_nonneg (x : real) =
+  Real.(x * x) >=. 0.0
+[@@by nonlin ()]
+
+lemma am_gm_2_squares (a : real) (b : real) =
+  a >=. 0.0 && b >=. 0.0
+  ==> Real.((a + b) * (a + b)) >=. Real.(4.0 * a * b)
+[@@by nonlin ()]
+
+(* With explicit g: g²=ab, g≥0, a,b≥0 → 2g ≤ a+b.
+   Proof: (a+b)² ≥ 4ab = 4g². Since a+b ≥ 0: a+b ≥ 2g. *)
+
+(* sqrt monotone: a ≥ b, a = sx², b = sy², sx,sy ≥ 0 → sx ≥ sy
+   Proof: sx² ≥ sy² and sx,sy ≥ 0 → (sx-sy)(sx+sy) ≥ 0 and sx+sy ≥ 0 → sx ≥ sy *)
+
+(* Factorization: sx²-sy² = (sx-sy)(sx+sy) *)
+
+lemma diff_of_squares (sx : real) (sy : real) =
+  Real.(sx * sx - sy * sy) = Real.((sx - sy) * (sx + sy))
+[@@by nonlin ()]
+
+lemma prod_nonneg_factors (a : real) (b : real) =
+  Real.(a * b) >=. 0.0 && b >=. 0.0 ==> a >=. 0.0 || b = 0.0
+[@@by nonlin ()]
+
+lemma sqrt_mono (sx : real) (sy : real) =
+  sx >=. 0.0 && sy >=. 0.0
+  && Real.(sx * sx) >=. Real.(sy * sy)
+  ==> sx >=. sy
+[@@by intros
+  @> [%subgoal Real.((sx - sy) * (sx + sy)) >=. 0.0]
+  @>| [
+    [%use prod_nonneg_factors Real.(sx - sy) Real.(sx + sy)] @> nonlin ();
+    [%use diff_of_squares sx sy] @> nonlin ()
+  ]]
+
+lemma am_gm_2 (a : real) (b : real) (g : real) =
+  a >=. 0.0 && b >=. 0.0 && g >=. 0.0
+  && Real.(g * g) = Real.(a * b)
+  ==> Real.(2.0 * g) <=. Real.(a + b)
+[@@by
+  intros
+  @> [%use am_gm_2_squares a b]
+  @> [%use sqrt_mono Real.(a + b) Real.(2.0 * g)]
+  @> auto]
+
+(* ============================================================
+   LIST INFRASTRUCTURE
+   ============================================================ *)
+
+let rec take (n : int) (xs : 'a list) : 'a list =
+  if n <= 0 then []
+  else match xs with
+    | [] -> []
+    | x :: rest -> x :: take (n - 1) rest
+
+let rec drop (n : int) (xs : 'a list) : 'a list =
+  if n <= 0 then xs
+  else match xs with
+    | [] -> []
+    | _ :: rest -> drop (n - 1) rest
+
+(* Split/merge lemmas *)
+
+lemma prod_append (xs : real list) (ys : real list) =
+  prod (xs @ ys) = prod xs *. prod ys
+[@@by auto] [@@rw]
+
+lemma sum_append (xs : real list) (ys : real list) =
+  sum (xs @ ys) = sum xs +. sum ys
+[@@by auto] [@@rw]
+
+lemma all_nonneg_append (xs : real list) (ys : real list) =
+  all_nonneg (xs @ ys) = (all_nonneg xs && all_nonneg ys)
+[@@by auto] [@@rw]
+
+lemma take_drop_append (n : int) (xs : 'a list) =
+  n >= 0 && n <= List.length xs ==>
+  take n xs @ drop n xs = xs
+[@@by auto] [@@rw]
+
+lemma length_take (n : int) (xs : 'a list) =
+  n >= 0 && n <= List.length xs ==>
+  List.length (take n xs) = n
+[@@by auto] [@@rw]
+
+lemma length_drop (n : int) (xs : 'a list) =
+  n >= 0 && n <= List.length xs ==>
+  List.length (drop n xs) = List.length xs - n
+[@@by auto] [@@rw]
+
+lemma all_nonneg_take (n : int) (xs : real list) =
+  all_nonneg xs ==> all_nonneg (take n xs)
+[@@by auto]
+
+lemma all_nonneg_drop (n : int) (xs : real list) =
+  all_nonneg xs ==> all_nonneg (drop n xs)
+[@@by auto]
+
+(* ============================================================
+   REAL_POW ARITHMETIC
+   ============================================================ *)
+
+lemma real_pow_0 (g : real) = real_pow g 0 = 1.0
+[@@by auto] [@@rw]
+
+lemma real_pow_1 (g : real) = real_pow g 1 = g
+[@@by auto] [@@rw]
+
+lemma real_pow_nonneg (g : real) (n : int) =
+  g >=. 0.0 ==> real_pow g n >=. 0.0
+[@@by auto]
+
+lemma real_pow_add (g : real) (m : int) (n : int) =
+  m >= 0 && n >= 0 ==>
+  real_pow g (m + n) = real_pow g m *. real_pow g n
+[@@by induction ()
+  @>| [auto;
+       lift_ifs @>| [auto;
+                     [%expand real_pow g (m + n)] @> auto]]][@@rw]
+
+lemma real_pow_mul (g : real) (h : real) (n : int) =
+  n >= 0 ==>
+  real_pow (g *. h) n = real_pow g n *. real_pow h n
+[@@by auto] [@@rw]
+
+(* ============================================================
+   HIRSCHHORN'S IDENTITY
+
+   For x ≥ 0 and n ≥ 0:
+     x^(n+1) - (n+1)·x + n ≥ 0
+
+   Proof by induction:
+     f_0(x) = x - x + 0 = 0
+     f_{n+1}(x) = x · f_n(x) + (n+1) · (x-1)²
+
+   Both terms are non-negative, so f_{n+1} ≥ 0.
+   ============================================================ *)
+
+let hirschhorn (x : real) (n : int) : real =
+  let np1 = n + 1 in
+  Real.(real_pow x np1 - of_int np1 * x + of_int n)
+
+(* The recurrence: f_{n+1}(x) = x · f_n(x) + (n+1)·(x-1)² *)
+
+lemma hirschhorn_step (x : real) (n : int) =
+  let np1 = n + 1 in
+  n >= 0 ==>
+  hirschhorn x np1 = Real.(x * hirschhorn x n + of_int np1 * (x - 1.0) * (x - 1.0))
+[@@by
+  intros
+  @> [%use real_pow_add x 1 (n + 1)]
+  @> simplify ()
+  @> nonlin ()]
+
+(* Custom induction helper for n *)
+
+let rec nat_ind (n : int) = if n <= 0 then true else nat_ind (n - 1)
+[@@measure Ordinal.of_int (max 0 n)]
+
+lemma nonneg_sum_of_products (a : real) (b : real) (c : real) (d : real) =
+  a >=. 0.0 && b >=. 0.0 && c >=. 0.0 && d >=. 0.0
+  ==> Real.(a * b + c * d) >=. 0.0
+[@@by nonlin ()]
+
+lemma hirschhorn_nonneg (x : real) (n : int) =
+  x >=. 0.0 && n >= 0 ==> hirschhorn x n >=. 0.0
+[@@by induction ~id:[%id nat_ind] () @>| [
+  auto;
+  intros
+  @> [%use hirschhorn_step x (n - 1)]
+  @> [%use square_nonneg Real.(x - 1.0)]
+  @> [%use nonneg_sum_of_products x (hirschhorn x (n - 1))
+       (Real.of_int n) Real.((x - 1.0) * (x - 1.0))]
+  @> auto
+]]
+
+(* Equivalent form: x^(n+1) ≥ (n+1)·x - n *)
+
+lemma pow_ge_linear (x : real) (n : int) =
+  let np1 = n + 1 in
+  x >=. 0.0 && n >= 0 ==>
+  real_pow x np1 >=. Real.(of_int np1 * x - of_int n)
+[@@by [%use hirschhorn_nonneg x n] @> simplify () @> nonlin ()]
+
+(* ============================================================
+   AM-GM BY DIRECT INDUCTION
+
+   Inductive step: given AM-GM for n, prove for n+1.
+   Key: use pow_ge_linear with x = g/μ (μ = mean of first n).
+   ============================================================ *)
+
+(* Sum and prod over non-negative lists *)
+
+lemma sum_nonneg xs =
+  all_nonneg xs ==> sum xs >=. 0.0
+[@@by auto] [@@fc]
+
+lemma prod_nonneg xs =
+  all_nonneg xs ==> prod xs >=. 0.0
+[@@by auto] [@@fc]
+
+(* ============================================================
+   SCALED POW-GE-LINEAR (Two-variable generalization)
+
+   For x, y ≥ 0 and n ≥ 0:
+     x^(n+1) ≥ y^n · ((n+1)·x − n·y)
+
+   This generalizes pow_ge_linear (set y=1 to recover it).
+   The key algebraic identity factors the difference:
+     x·xn − y·yn·((n+1)x − ny)
+       = x·(xn − yn·(nx − (n−1)y)) + n·yn·(x−y)²
+   Both terms are non-negative, giving the inductive step.
+   ============================================================ *)
+
+lemma nonneg_prod (a : real) (b : real) =
+  a >=. 0.0 && b >=. 0.0 ==> Real.(a * b) >=. 0.0
+[@@by nonlin ()]
+
+(* Key identity: factors the difference as a sum of non-negative products *)
+lemma pgl_identity (xn : real) (yn1 : real) (x : real) (y : real) (nr : real) =
+  Real.(x * xn - y * yn1 * ((nr + 1.0) * x - nr * y))
+  = Real.(x * (xn - yn1 * (nr * x - (nr - 1.0) * y))
+          + nr * yn1 * (x - y) * (x - y))
+[@@by nonlin ()]
+
+lemma pgl_step (xn : real) (yn1 : real) (x : real) (y : real) (nr : real) =
+  xn >=. Real.(yn1 * (nr * x - (nr - 1.0) * y))
+  && x >=. 0.0 && y >=. 0.0 && yn1 >=. 0.0 && nr >=. 1.0
+  ==> Real.(x * xn) >=. Real.(y * yn1 * ((nr + 1.0) * x - nr * y))
+[@@by
+  intros
+  @> [%use pgl_identity xn yn1 x y nr]
+  @> [%use square_nonneg Real.(x - y)]
+  @> [%use nonneg_prod nr yn1]
+  @> [%use nonneg_sum_of_products x
+       Real.(xn - yn1 * (nr * x - (nr - 1.0) * y))
+       (nr *. yn1) Real.((x - y) * (x - y))]
+  @> auto]
+
+(* Equivalent form: x^(n+1) ≥ y^n · ((n+1)·x − n·y) *)
+
+lemma pow_ge_linear_scaled (x : real) (y : real) (n : int) =
+  let np1 = n + 1 in
+  x >=. 0.0 && y >=. 0.0 && n >= 0 ==>
+  real_pow x np1 >=. Real.(real_pow y n * (of_int np1 * x - of_int n * y))
+[@@by induction ~id:[%id nat_ind] () @>| [
+  auto;
+  intros
+  @> [%use real_pow_add x n 1]
+  @> [%use real_pow_add y (n - 1) 1]
+  @> [%use real_pow_nonneg y (n - 1)]
+  @> simplify ()
+  @> [%use pgl_step (real_pow x n) (real_pow y (n - 1)) x y (Real.of_int n)]
+  @> auto
+]]
+
+(* ============================================================
+   YOUNG'S INEQUALITY (key step for AM-GM)
+
+   For a, s ≥ 0 and m ≥ 1:
+     m^m · (a+s)^(m+1) ≥ (m+1)^(m+1) · a · s^m
+
+   Proof: apply pow_ge_linear_scaled with
+     x = m·(a+s), y = (m+1)·s, n = m
+   then expand using real_pow_mul and simplify.
+   ============================================================ *)
+
+lemma real_pow_pos (g : real) (n : int) =
+  g >. 0.0 && n >= 0 ==> real_pow g n >. 0.0
+[@@by auto]
+
+lemma young_ineq (a : real) (s : real) (m : int) =
+  a >=. 0.0 && s >=. 0.0 && m >= 1 ==>
+  real_pow (Real.of_int m) m *. real_pow (a +. s) (m + 1)
+  >=. real_pow (Real.of_int (m + 1)) (m + 1) *. a *. real_pow s m
+[@@by
+  intros
+  @> [%use pow_ge_linear_scaled
+       (Real.of_int m *. (a +. s))
+       (Real.of_int (m + 1) *. s)
+       m]
+  @> [%use real_pow_mul (Real.of_int m) (a +. s) (m + 1)]
+  @> [%use real_pow_mul (Real.of_int (m + 1)) s m]
+  @> [%use real_pow_add (Real.of_int m) m 1]
+  @> [%use real_pow_add (Real.of_int (m + 1)) m 1]
+  @> simplify ()
+  @> generalize (quote_term (real_pow (Real.of_int m) m)) "mm"
+  @> generalize (quote_term (real_pow (a +. s) (m + 1))) "asm1"
+  @> generalize (quote_term (real_pow (Real.of_int (m + 1)) m)) "mp1m"
+  @> generalize (quote_term (real_pow s m)) "sm"
+  @> nonlin ()]
+
+(* ============================================================
+   AM-GM IN POWER FORM
+
+   For a list of n ≥ 1 non-negative reals:
+     (sum xs)^n ≥ n^n · prod(xs)
+   ============================================================ *)
+
+(* Chain lemma: combines Young's inequality with IH *)
+lemma am_gm_chain (mm : real) (sn : real) (nn : real) (a : real) (sm : real) (p : real) =
+  mm >. 0.0
+  && mm *. sn >=. nn *. a *. sm
+  && sm >=. mm *. p
+  && nn >=. 0.0 && a >=. 0.0 && p >=. 0.0
+  ==> sn >=. nn *. a *. p
+[@@by nonlin ()]
+
+theorem am_gm_power xs =
+  let n = List.length xs in
+  n >= 1 && all_nonneg xs ==>
+  real_pow (sum xs) n >=. real_pow (Real.of_int n) n *. prod xs
+[@@by induction () @>| [
+  auto;
+  [%cases (List.tl xs = [])] @>| [
+    auto;
+    intros
+    @> [%use young_ineq (List.hd xs) (sum (List.tl xs)) (List.length (List.tl xs))]
+    @> [%use sum_nonneg (List.tl xs)]
+    @> [%use prod_nonneg (List.tl xs)]
+    @> [%use real_pow_pos (Real.of_int (List.length (List.tl xs))) (List.length (List.tl xs))]
+    @> [%use real_pow_nonneg (Real.of_int (List.length xs)) (List.length xs)]
+    @> [%use am_gm_chain
+         (real_pow (Real.of_int (List.length (List.tl xs))) (List.length (List.tl xs)))
+         (real_pow (sum xs) (List.length xs))
+         (real_pow (Real.of_int (List.length xs)) (List.length xs))
+         (List.hd xs)
+         (real_pow (sum (List.tl xs)) (List.length (List.tl xs)))
+         (prod (List.tl xs))]
+    @> auto
+  ]
+]]
+
+(* ============================================================
+   POWER MONOTONICITY
+   ============================================================ *)
+
+lemma pow_strict_mono (a : real) (b : real) (n : int) =
+  a >. b && b >=. 0.0 && n >= 1 ==> real_pow a n >. real_pow b n
+[@@by induction ~id:[%id nat_ind] () @>| [
+  auto;
+  [%cases n = 1] @>| [
+    auto;
+    intros
+    @> [%use real_pow_add a 1 (n - 1)]
+    @> [%use real_pow_add b 1 (n - 1)]
+    @> [%use real_pow_nonneg b (n - 1)]
+    @> [%use real_pow_pos a (n - 1)]
+    @> simplify ()
+    @> generalize (quote_term (real_pow a (n - 1))) "an1"
+    @> generalize (quote_term (real_pow b (n - 1))) "bn1"
+    @> nonlin ()
+  ]
+]]
+
+lemma pow_le_cancel (a : real) (b : real) (n : int) =
+  a >=. 0.0 && b >=. 0.0 && n >= 1
+  && real_pow a n >=. real_pow b n ==> a >=. b
+[@@by [%use pow_strict_mono b a n] @> auto]
+
+(* ============================================================
+   At last, our main theorem, THE AM-GM INEQUALITY!
+
+   For a list xs of n ≥ 1 non-negative reals:
+   if g ≥ 0 and g^n = prod(xs), then n*g ≤ sum(xs).
+   ============================================================ *)
+
+theorem am_gm xs g n =
+  n >= 1
+  && List.length xs = n
+  && all_nonneg xs
+  && g >=. 0.0
+  && real_pow g n = prod xs
+  ==> Real.of_int n *. g <=. sum xs
+[@@by
+  intros
+  @> [%use am_gm_power xs]
+  @> [%use real_pow_mul (Real.of_int n) g n]
+  @> [%use sum_nonneg xs]
+  @> [%use pow_le_cancel (sum xs) (Real.of_int n *. g) n]
+  @> auto]

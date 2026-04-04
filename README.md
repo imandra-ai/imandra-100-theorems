@@ -4,14 +4,15 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **23/100**:
+Currently, we have proven **24/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
 4\. [Pythagorean Theorem](#thm-4)  
-11\. [Infinitude of Primes](#thm-11)  
-34\. [Divergence of the Harmonic Series](#thm-34)  
-42\. [Sum of the Reciprocals of the Triangular Numbers](#thm-42)  
+11\. [Infinitude of Primes](#thm-11)
+34\. [Divergence of the Harmonic Series](#thm-34)
+38\. [Arithmetic Mean/Geometric Mean](#thm-38)
+42\. [Sum of the Reciprocals of the Triangular Numbers](#thm-42)
 44\. [Binomial Theorem](#thm-44)  
 52\. [Number of Subsets of a Set](#thm-52)  
 54\. [Königsberg Bridges Problem](#thm-54)  
@@ -153,6 +154,38 @@ theorem harmonic_series_diverges m n =
 
 [Back to list](#status)
 
+
+
+<a id="thm-38"></a>
+## 38. Arithmetic Mean/Geometric Mean
+
+[Source: src/am_gm.iml](src/am_gm.iml)
+
+*Statement (informal):*
+For non-negative reals $a_1, \ldots, a_n$, the arithmetic mean is at least the geometric mean:
+
+$$\frac{a_1 + a_2 + \cdots + a_n}{n} \ge \left(a_1 \cdot a_2 \cdots a_n\right)^{1/n}.$$
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem am_gm_power xs =
+  let n = List.length xs in
+  n >= 1 && all_nonneg xs ==>
+  real_pow (sum xs) n >=. real_pow (Real.of_int n) n *. prod xs
+
+theorem am_gm xs g n =
+  n >= 1
+  && List.length xs = n
+  && all_nonneg xs
+  && g >=. 0.0
+  && real_pow g n = prod xs
+  ==> Real.of_int n *. g <=. sum xs
+```
+</details>
+
+[Back to list](#status)
 
 
 <a id="thm-42"></a>
@@ -603,8 +636,7 @@ theorem remainder_theorem p a x =
 
 theorem factor_remainder p a x =
   poly_eval p a = 0.0
-  = (poly_eval p x = Real.((x - a) * poly_eval (synth_div p a) x)
-     && poly_eval p a = 0.0)
+  = (poly_eval p x = Real.((x - a) * poly_eval (synth_div p a) x))
 ```
 </details>
 
