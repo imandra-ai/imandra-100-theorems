@@ -4,7 +4,7 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **24/100**:
+Currently, we have proven **25/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
@@ -14,6 +14,7 @@ Currently, we have proven **24/100**:
 38\. [Arithmetic Mean/Geometric Mean](#thm-38)  
 42\. [Sum of the Reciprocals of the Triangular Numbers](#thm-42)  
 44\. [Binomial Theorem](#thm-44)  
+51\. [Wilson's Theorem](#thm-51)  
 52\. [Number of Subsets of a Set](#thm-52)  
 54\. [Königsberg Bridges Problem](#thm-54)  
 58\. [Formula for Number of Combinations](#thm-58)  
@@ -239,6 +240,26 @@ $$
 theorem binomial_theorem n x y =
   n >= 0 && x >= 0 && y >= 0 
   ==> pow (x + y) n = binom_eval n x y
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-51"></a>
+## 51. Wilson's Theorem
+
+[Source: src/wilson.iml](src/wilson.iml)
+
+*Statement (informal):*
+If $p$ is prime, then $(p-1)! \equiv -1 \pmod{p}$.
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem wilson p =
+  is_prime p ==> Combinations.fact (p - 1) mod p = p - 1
 ```
 </details>
 
