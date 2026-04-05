@@ -1,0 +1,1075 @@
+(* A proof of Wilson's Theorem in Imandra.
+   Theorem 51 in the 100 Theorems list.
+
+   Grant Passmore, Imandra
+ *)
+
+(* =============================================================
+   WILSON'S THEOREM
+
+   If p is prime, then (p-1)! ≡ -1 (mod p).
+
+   Equivalently: fact(p-1) mod p = p - 1.
+
+   Proof strategy:
+   1. Every a ∈ {1,...,p-1} has a unique inverse mod p (via Bezout).
+   2. The only self-inverses are 1 and p-1.
+   3. Elements {2,...,p-2} pair with distinct inverses,
+      product ≡ 1 (mod p).
+   4. So (p-1)! = 1 · [pairs] · (p-1) ≡ -1 (mod p).
+   ============================================================= *)
+
+[@@@import Inf_primes, "inf_primes.iml"]
+[@@@import GCD, "gcd.iml"]
+[@@@import Combinations, "combinations.iml"]
+
+open Inf_primes
+open GCD
+open Combinations
+
+open Mod.Theorems
+
+(* ============================================================
+   COPRIMALITY AND MODULAR INVERSE
+   ============================================================ *)
+
+lemma coprime_with_prime a p =
+  is_prime p && 1 <= a && a < p ==> gcd a p = 1
+[@@by
+  intros
+  @> [%cases gcd a p = 1]
+  @>| [
+    auto;
+    intros
+    @> [%use gcd_pos_from_nonneg_not_both_zero a p]
+    @> [%use gcd_dvd_both_pos a p]
+    @> [%use div_mod a (gcd a p)]
+    @> [%use sd_strictly_minimal p (gcd a p)]
+    @> simplify ()
+    @> nonlin ()
+  ]]
+
+lemma inverse_exists a p =
+  is_prime p && 1 <= a && a < p
+  ==> (let (u, _) = bezout_sub a p in ((u * a) mod p) = 1)
+[@@by
+  intros
+  @> [%use coprime_with_prime a p]
+  @> [%use gcd_eq_one_iff_bezout a p]
+  @> let (u, v) = bezout_sub a p in esimp
+  @> [%use mod_add (u * a) (p * v) p]
+  @> [%use mod_mul_right_zero v p]
+  @> [%use mod_one_self p]
+  @> [%use mod_idem (u * a) p]
+  @> auto]
+
+(* ============================================================
+   SELF-INVERSE CHARACTERIZATION
+
+   If a² ≡ 1 (mod p) with 1 ≤ a < p, then a = 1 or a = p-1.
+   ============================================================ *)
+
+lemma diff_sq_expand a =
+  ((-1 + a) * (1 + a)) = ((a * a) + (-1))
+[@@by auto]
+
+lemma mod_add_neg_self d t =
+  d <> 0 ==> ((t + (-t)) mod d) = 0
+[@@by [%use mod_add t (-t) d] @> [%use zero_mod d] @> auto]
+
+(* Euclid's lemma: if p prime and gcd(x,p)=1, then p|xy implies p|y *)
+(* Helper: (u*x) mod p = 1 from Bezout *)
+lemma mod_add_zero_right d x =
+  d <> 0 ==> (((x mod d) + 0) mod d) = (x mod d)
+[@@by [%use mod_idem x d] @> auto]
+
+lemma bezout_inverse x p =
+  let (u, _) = bezout_sub x p in
+  p > 1 && gcd x p = 1
+  ==> ((u * x) mod p) = 1
+[@@by
+  intros
+  @> [%use gcd_eq_one_iff_bezout x p]
+  @> let (u, v) = bezout_sub x p in
+     simplify ()
+  @> [%use mod_add (u * x) (v * p) p]
+  @> [%use mod_mul_left_zero v p]
+  @> [%use mod_one_self p]
+  @> [%use mod_add_zero_right p (u * x)]
+  @> auto]
+
+(* Helper: if (u*x) mod p = 1 and (x*y) mod p = 0, then y mod p = 0 *)
+lemma cancel_coprime_factor u x y p =
+  p > 1 && ((u * x) mod p) = 1 && ((x * y) mod p) = 0
+  ==> (y mod p) = 0
+[@@by
+  intros
+  @> [%use mod_mul_preserves_zero u (x * y) p]
+  @> [%use mod_mul (u * x) y p]
+  @> [%use mod_idem y p]
+  @> simplify ()
+  @> auto]
+
+lemma euclid_lemma p x y =
+  p > 1 && gcd x p = 1 && ((x * y) mod p) = 0
+  ==> (y mod p) = 0
+[@@by
+  intros
+  @> [%use bezout_inverse x p]
+  @> let (u, _) = bezout_sub x p in
+     [%use cancel_coprime_factor u x y p]
+  @> auto]
+
+(* a² ≡ 1 mod p means (a-1)(a+1) ≡ 0 mod p *)
+lemma sq_minus_one_zero a p =
+  p > 1 && ((a * a) mod p) = 1
+  ==> ((a * a + (-1)) mod p) = 0
+[@@by
+  intros
+  @> [%use mod_add (a * a) (-1) p]
+  @> [%use mod_add 1 (-1) p]
+  @> [%use zero_mod p]
+  @> [%use mod_one_self p]
+  @> auto]
+
+lemma sq_one_means_product_zero a p =
+  p > 1 && ((a * a) mod p) = 1
+  ==> (((-1 + a) * (1 + a)) mod p) = 0
+[@@by
+  intros
+  @> [%use sq_minus_one_zero a p]
+  @> [%use diff_sq_expand a]
+  @> auto]
+
+theorem self_inverse_mod a p =
+  is_prime p && 1 <= a && a < p && ((a * a) mod p) = 1
+  ==> (a = 1 || a = p - 1)
+[@@by
+  intros
+  @> [%use sq_one_means_product_zero a p]
+  @> [%cases gcd (a - 1) p = 1]
+  @>| [
+    intros
+    @> [%use euclid_lemma p (a - 1) (a + 1)]
+    @> [%use mod_small (1 + a) p]
+    @> simplify ()
+    @> auto;
+
+    intros
+    @> [%use coprime_with_prime (a - 1) p]
+    @> auto
+  ]]
+
+(* ============================================================
+   PREFIX PRODUCT MOD P
+   ============================================================ *)
+
+let rec pref_prod_mod (p : int) (k : int) : int =
+  if k <= 0 then 1
+  else ((k mod p) * pref_prod_mod p (k - 1)) mod p
+[@@measure Ordinal.of_int (max 0 k)]
+[@@by auto]
+
+(* pref_prod_mod p k = fact(k) mod p *)
+
+lemma one_mod_p p =
+  p > 1 ==> 1 mod p = 1
+[@@by [%use mod_one_self p] @> auto]
+
+lemma mod_mul_ne0 x y d =
+  d <> 0 ==> ((x * y) mod d) = ((((x mod d) * (y mod d)) mod d))
+[@@by intros @> [%use mod_mul x y d] @> auto]
+
+theorem pref_prod_eq_fact p k =
+  p > 1 && k >= 0
+  ==> pref_prod_mod p k = Combinations.fact k mod p
+[@@by induction () @>| [
+  intros @> simplify () @> [%use one_mod_p p] @> auto;
+  intros @> simplify ()
+  @> [%use mod_mul_ne0 k (Combinations.fact (k - 1)) p]
+  @> [%use Combinations.fact_succ k]
+  @> auto]]
+
+(* ============================================================
+   MODULAR INVERSE FUNCTION
+
+   inv_mod a p = the unique b ∈ {0,...,p-1} with a*b ≡ 1 (mod p).
+   Defined via Bezout coefficients.
+   ============================================================ *)
+
+let inv_mod (a : int) (p : int) : int =
+  let (u, _) = bezout_sub a p in u mod p
+
+(* (a*b) mod p = (a*(b mod p)) mod p — reducing a factor mod p *)
+lemma mod_mul_right_mod a b p =
+  p <> 0 ==> ((a * b) mod p) = ((a * (b mod p)) mod p)
+[@@by [%use mod_mul a b p] @> [%use mod_mul a (b mod p) p] @> [%use mod_idem b p] @> auto]
+
+(* inv_mod gives a valid inverse *)
+lemma inv_mod_works a p =
+  is_prime p && 1 <= a && a < p
+  ==> ((a * inv_mod a p) mod p) = 1
+[@@by
+  intros
+  @> [%use bezout_inverse a p]
+  @> [%use coprime_with_prime a p]
+  @> let (u, _) = bezout_sub a p in
+     [%use mod_mul_right_mod a u p]
+  @> auto]
+
+(* inv_mod is in the right range *)
+lemma inv_mod_range a p =
+  is_prime p && 1 <= a && a < p
+  ==> 1 <= inv_mod a p && inv_mod a p < p
+[@@by
+  intros
+  @> [%use inv_mod_works a p]
+  @> [%use mod_range (let (u,_) = bezout_sub a p in u) p]
+  @> simplify ()
+  @> [%use mod_small (inv_mod a p) p]
+  @> auto]
+
+(* inv_mod is not 0 (since a * 0 = 0 ≢ 1) *)
+lemma inv_mod_nonzero a p =
+  is_prime p && 1 <= a && a < p
+  ==> inv_mod a p <> 0
+[@@by
+  intros
+  @> [%use inv_mod_works a p]
+  @> auto]
+
+(* Pure substitution helpers *)
+lemma sub_eq_mod (a : int) (b : int) (p : int) =
+  ((a * b) mod p) = 1 && b = a ==> ((a * a) mod p) = 1
+[@@by auto]
+
+lemma sub_eq_mod2 (a : int) (b : int) (c : int) (p : int) =
+  ((a * b) mod p) = 1 && b = c ==> ((a * c) mod p) = 1
+[@@by auto]
+
+(* a*(p-1) ≡ p-a (mod p) for 1 ≤ a < p *)
+lemma mul_pminus1_mod a p =
+  p > 1 && 1 <= a && a < p ==> (a * (p - 1)) mod p = p - a
+[@@by
+  intros
+  @> [%use mod_add (a * p) (- a) p]
+  @> [%use mod_mul_left_zero a p]
+  @> [%use mod_recur_pos_neg (-a) p]
+  @> [%use mod_small (p - a) p]
+  @> [%use mod_idem (-a) p]
+  @> auto]
+
+(* For interior elements, inv_mod maps interior to interior *)
+lemma inv_mod_interior a p =
+  is_prime p && 2 <= a && a <= p - 2
+  ==> 2 <= inv_mod a p && inv_mod a p <= p - 2
+[@@by
+  intros
+  @> [%use inv_mod_range a p]
+  @> [%use inv_mod_works a p]
+  @> [%use mod_small a p]
+  @> [%cases inv_mod a p = 1] @>| [
+    auto;
+    [%cases inv_mod a p = p - 1] @>| [
+      intros
+      @> [%use mul_pminus1_mod a p]
+      @> [%use sub_eq_mod2 a (inv_mod a p) (p - 1) p]
+      @> auto;
+      auto
+    ]
+  ]]
+
+(* Pure substitution: if (a*b) mod p = 1 and b = a, then (a*a) mod p = 1 *)
+lemma sub_eq_mod (a : int) (b : int) (p : int) =
+  ((a * b) mod p) = 1 && b = a ==> ((a * a) mod p) = 1
+[@@by auto]
+
+(* If inv_mod = a, then a² ≡ 1 mod p *)
+lemma fixpoint_implies_sq_one a p =
+  is_prime p && 1 <= a && a < p && inv_mod a p = a
+  ==> ((a * a) mod p) = 1
+[@@by
+  intros
+  @> [%use inv_mod_works a p]
+  @> [%use sub_eq_mod a (inv_mod a p) p]
+  @> auto]
+
+(* For interior elements, inv_mod ≠ self (no fixed points) *)
+lemma inv_mod_no_fixpoint a p =
+  is_prime p && 2 <= a && a <= p - 2
+  ==> inv_mod a p <> a
+[@@by
+  intros
+  @> [%use fixpoint_implies_sq_one a p]
+  @> [%use self_inverse_mod a p]
+  @> simplify ()
+  @> auto]
+
+(* ============================================================
+   PRODUCT OF INTERIOR ELEMENTS ≡ 1 (mod p)
+
+   For prime p, the product 1·2·...·(p-2) ≡ 1 (mod p).
+   Each element in {2,...,p-2} pairs with its distinct inverse,
+   and each pair contributes 1 to the product.
+   ============================================================ *)
+
+(* --- Commutativity of multiplication under mod --- *)
+
+lemma mod_mul_comm a b p =
+  ((a * b) mod p) = ((b * a) mod p)
+[@@by auto]
+
+(* --- Uniqueness of modular inverse --- *)
+
+lemma inverse_unique a b c p =
+  p > 1 && ((a * b) mod p) = 1 && ((a * c) mod p) = 1
+  ==> (b mod p) = (c mod p)
+[@@by
+  intros
+  @> [%use mod_mul c (a * b) p]
+  @> [%use mod_mul b (a * c) p]
+  @> [%use mod_idem b p]
+  @> [%use mod_idem c p]
+  @> simplify ()
+  @> nonlin ()]
+
+(* --- Involution: inv(inv(a)) = a --- *)
+
+lemma inv_mod_involution a p =
+  is_prime p && 1 <= a && a < p
+  ==> inv_mod (inv_mod a p) p = a mod p
+[@@by
+  [%cases p = 2] @>| [
+    auto;
+    intros
+    @> [%use inv_mod_works a p]
+    @> [%use inv_mod_range a p]
+    @> [%use inv_mod_range (inv_mod a p) p]
+    @> [%use inv_mod_works (inv_mod a p) p]
+    @> [%use mod_mul_comm a (inv_mod a p) p]
+    @> [%use inverse_unique (inv_mod a p) a (inv_mod (inv_mod a p) p) p]
+    @> [%use mod_small a p]
+    @> [%use mod_small (inv_mod (inv_mod a p) p) p]
+    @> generalize (quote_term (inv_mod (inv_mod a p) p)) "x"
+    @> generalize (quote_term (inv_mod a p)) "u"
+    @> simplify ()
+    @> auto
+  ]]
+
+(* --- Product of pair-contributions is 1 --- *)
+
+(* For each k, contribute k*inv(k) if k is the "small" partner *)
+let low_pair_prod_measure (p : int) (k : int) = Ordinal.of_int (max 0 k)
+
+let rec low_pair_prod (p : int) (k : int) : int =
+  if k <= 1 then 1
+  else if inv_mod k p < k then
+    low_pair_prod p (k - 1)
+  else
+    ((k * inv_mod k p) mod p * low_pair_prod p (k - 1)) mod p
+[@@measure low_pair_prod_measure p k]
+[@@by auto]
+
+let rec nat_ind (n : int) = if n <= 0 then true else nat_ind (n - 1)
+[@@measure Ordinal.of_int (max 0 n)]
+
+(* --- Connect low_pair_prod to pref_prod_mod --- *)
+
+(* The key insight: low_pair_prod multiplies k * inv(k) for "small" k,
+   which is a rearrangement of multiplying ALL elements in {2,...,p-2}.
+   Since each pair contributes the SAME two elements as in the sequential
+   product, and k*inv(k) = inv(k)*k by commutativity, the products match.
+
+   This requires the involution + injectivity properties proved above. *)
+
+(* For now, connect via an intermediate: the product P * Q = 1,
+   where Q = product of inverses. Combined with Q = P (permutation),
+   we get P = 1. *)
+
+let inv_pref_prod_mod_measure (p : int) (k : int) = Ordinal.of_int (max 0 k)
+
+let rec inv_pref_prod_mod (p : int) (k : int) : int =
+  if k <= 0 then 1
+  else ((inv_mod k p) * inv_pref_prod_mod p (k - 1)) mod p
+[@@measure inv_pref_prod_mod_measure p k]
+[@@by auto]
+
+(* P * Q ≡ 1: each factor pair contributes k * inv(k) ≡ 1 *)
+(* Rearrangement: (a*b)(c*d) = (a*c)(b*d) under mod *)
+lemma mod_mul_rearrange a b c d p =
+  p <> 0 ==>
+  (((a * b) mod p) * ((c * d) mod p)) mod p
+  = (((a * c) mod p) * ((b * d) mod p)) mod p
+[@@by
+  [%use mod_mul (a * b) (c * d) p]
+  @> [%use mod_mul (a * c) (b * d) p]
+  @> auto]
+
+lemma prod_times_inv_prod p k =
+  is_prime p && 0 <= k && k < p
+  ==> (pref_prod_mod p k * inv_pref_prod_mod p k) mod p = 1
+[@@by induction () @>| [
+  intros @> simplify () @> [%use one_mod_p p] @> auto;
+  intros
+  @> [%use mod_mul_rearrange (inv_mod k p) (inv_pref_prod_mod p (k - 1))
+                             (k mod p) (pref_prod_mod p (k - 1)) p]
+  @> [%use mod_mul_right_mod (inv_mod k p) k p]
+  @> [%use mod_mul_comm (inv_mod k p) k p]
+  @> [%use inv_mod_works k p]
+  @> [%use one_mod_p p]
+  @> simplify ()
+  @> auto]]
+
+(* ============================================================
+   CLOSING THE GAP: pref_prod_mod p (p-2) = 1
+
+   Key idea: define pref_prod_with_debt that multiplies each
+   element k AND its inverse inv(k). The debt tracks future
+   obligations. Invariant: pref_prod * debt ≡ 1.
+   At k = p-2: debt = 1 since all inverses are in range.
+   ============================================================ *)
+
+(* Product of elements AND their inverses from 1 to k *)
+let combined_measure (p : int) (k : int) = Ordinal.of_int (max 0 k)
+
+let rec combined_prod (p : int) (k : int) : int =
+  if k <= 0 then 1
+  else ((k * inv_mod k p) mod p * combined_prod p (k - 1)) mod p
+[@@measure combined_measure p k]
+[@@by auto]
+
+(* combined_prod = 1 trivially (each factor is 1) *)
+lemma combined_prod_is_one p k =
+  is_prime p && k >= 0 && k < p
+  ==> combined_prod p k = 1
+[@@by induction () @>| [
+  auto;
+  [%use inv_mod_works k p]
+  @> [%use one_mod_p p]
+  @> simplify ()
+  @> auto]]
+
+(* ============================================================
+   PERMUTATION ARGUMENT
+
+   inv_mod is a bijection on {1,...,p-2}, so the product of
+   inverses equals the product of the original elements.
+   Combined with P*Q = 1, this gives P² = 1, P = 1.
+   ============================================================ *)
+
+(* List product mod p *)
+let rec list_prod_mod (xs : int list) (p : int) : int =
+  match xs with
+  | [] -> 1
+  | x :: rest -> (x * list_prod_mod rest p) mod p
+
+(* Remove first occurrence *)
+let rec remove (x : int) (xs : int list) : int list =
+  match xs with
+  | [] -> []
+  | y :: rest -> if x = y then rest else y :: remove x rest
+
+(* Helper: result of list_prod_mod is in [0, p) *)
+lemma list_prod_mod_nonneg xs p =
+  p > 0 ==> list_prod_mod xs p >= 0
+[@@by auto]
+
+lemma list_prod_mod_lt xs p =
+  p > 1 ==> list_prod_mod xs p < p
+[@@by auto]
+
+(* Helper: reducing a factor mod p doesn't change the product mod p *)
+lemma mod_mul_left_mod a b p =
+  p <> 0 ==> ((a mod p) * b) mod p = (a * b) mod p
+[@@by
+  [%use mod_mul a b p]
+  @> [%use mod_mul (a mod p) b p]
+  @> [%use mod_idem a p]
+  @> generalize (quote_term (a mod p)) "am"
+  @> generalize (quote_term (b mod p)) "bm"
+  @> simplify ()
+  @> nonlin ()]
+
+(* Key step for list_prod_mod_append: modular product rearrangement *)
+(* (h * ((ly * lt) mod p)) mod p = (((h * lt) mod p) * ly) mod p *)
+lemma mod_prod_rearrange h lt ly p =
+  p <> 0 ==>
+  (h * ((ly * lt) mod p)) mod p = (((h * lt) mod p) * ly) mod p
+[@@by
+  [%use mod_mul_right_mod h (ly * lt) p]
+  @> [%use mod_mul_left_mod (h * lt) ly p]
+  @> auto]
+
+(* List product distributes over append *)
+lemma list_prod_mod_append xs ys p =
+  p > 1 ==>
+  list_prod_mod (xs @ ys) p = (list_prod_mod xs p * list_prod_mod ys p) mod p
+[@@by induction () @>| [
+  [%use list_prod_mod_nonneg ys p] @> [%use list_prod_mod_lt ys p] @> [%use mod_small (list_prod_mod ys p) p] @> auto;
+  intros
+  @> simplify ()
+  @> [%use mod_prod_rearrange (List.hd xs) (list_prod_mod (List.tl xs) p) (list_prod_mod ys p) p]
+  @> auto]][@@rw]
+
+(* Key helper: (a * (b * c) mod p) mod p = (b * (a * c) mod p) mod p *)
+lemma mod_prod_swap a b c p =
+  p > 1 ==>
+  (a * ((b * c) mod p)) mod p = (b * ((a * c) mod p)) mod p
+[@@by
+  [%use mod_mul_right_mod a (b * c) p]
+  @> [%use mod_mul_right_mod b (a * c) p]
+  @> auto]
+
+(* Factor-out: if x ∈ xs, we can extract x from the product *)
+lemma list_prod_remove x xs p =
+  p > 1 && List.mem x xs
+  ==> list_prod_mod xs p = (x * list_prod_mod (remove x xs) p) mod p
+[@@by
+  induction ()
+  @>| [auto;
+       (* x ≠ hd case: need mod_prod_swap + IH *)
+       [%use mod_prod_swap (List.hd xs) x (list_prod_mod (remove x (List.tl xs)) p) p]
+       @> simplify ()
+       @> auto]]
+
+(* Range list *)
+let range_measure (lo : int) (hi : int) = Ordinal.of_int (max 0 (hi - lo + 1))
+
+let rec range (lo : int) (hi : int) : int list =
+  if lo > hi then [] else lo :: range (lo + 1) hi
+[@@measure range_measure lo hi]
+
+(* Membership in range *)
+lemma mem_range a lo hi =
+  List.mem a (range lo hi) = (lo <= a && a <= hi)
+[@@by auto][@@rw]
+
+(* pair_cancel: process a list, pairing elements with their inverses *)
+lemma remove_length x xs =
+  List.mem x xs ==> List.length (remove x xs) < List.length xs
+[@@by auto]
+
+let pair_cancel_measure (p : int) (xs : int list) = Ordinal.of_int (List.length xs)
+
+let rec pair_cancel_prod (p : int) (xs : int list) : int =
+  match xs with
+  | [] -> 1
+  | a :: rest ->
+    if List.mem (inv_mod a p) rest then
+      pair_cancel_prod p (remove (inv_mod a p) rest)
+    else
+      (a * pair_cancel_prod p rest) mod p
+[@@measure pair_cancel_measure p xs]
+[@@by [%use remove_length (inv_mod (List.hd xs) p) (List.tl xs)] @> auto]
+
+lemma p_neq_0_from_p_gt_1 p =
+  p > 1 ==> p <> 0
+
+lemma p_gt_0_from_p_gt_1 p =
+  p > 1 ==> p > 0
+
+(* pair_cancel equals list_prod: pairing doesn't change the product *)
+(* All elements in range [lo, hi] *)
+let rec all_in_range (lo : int) (hi : int) (xs : int list) : bool =
+  match xs with
+  | [] -> true
+  | x :: rest -> lo <= x && x <= hi && all_in_range lo hi rest
+
+lemma all_in_range_mem a lo hi xs =
+  all_in_range lo hi xs && List.mem a xs ==> lo <= a && a <= hi
+[@@by auto]
+
+lemma all_in_range_tl lo hi xs =
+  xs <> [] && all_in_range lo hi xs ==> all_in_range lo hi (List.tl xs)
+[@@by auto]
+
+lemma all_in_range_remove x lo hi xs =
+  all_in_range lo hi xs ==> all_in_range lo hi (remove x xs)
+[@@by auto]
+
+(* Key cancellation: a * (inv(a) * l mod p) mod p = l *)
+lemma cancel_pair a p l =
+  is_prime p && 1 <= a && a < p && l >= 0 && l < p
+  ==> (a * ((inv_mod a p * l) mod p)) mod p = l
+[@@by
+  [%use inv_mod_works a p]
+  @> [%use mod_mul_right_mod a (inv_mod a p * l) p]
+  @> [%use mod_mul_left_mod (a * inv_mod a p) l p]
+  @> [%use mod_small l p]
+  @> simplify ()
+  @> auto]
+
+lemma hd_mem_cons (xs : int list) =
+  xs <> [] ==> List.mem (List.hd xs) xs
+[@@by auto]
+
+lemma pair_cancel_eq_list_prod p xs =
+  is_prime p
+  && all_in_range 1 (p - 2) xs
+  ==> pair_cancel_prod p xs = list_prod_mod xs p
+[@@by
+  induction ()
+  @>| [
+    auto;
+    (* mem case: pair cancels *)
+    intros
+    @> [%use all_in_range_mem (List.hd xs) 1 (p - 2) xs]
+    @> [%use hd_mem_cons xs]
+    @> [%use all_in_range_tl 1 (p - 2) xs]
+    @> [%use all_in_range_remove (inv_mod (List.hd xs) p) 1 (p - 2) (List.tl xs)]
+    @> [%use list_prod_remove (inv_mod (List.hd xs) p) (List.tl xs) p]
+    @> [%use list_prod_mod_nonneg (remove (inv_mod (List.hd xs) p) (List.tl xs)) p]
+    @> [%use list_prod_mod_lt (remove (inv_mod (List.hd xs) p) (List.tl xs)) p]
+    @> [%use cancel_pair (List.hd xs) p
+         (list_prod_mod (remove (inv_mod (List.hd xs) p) (List.tl xs)) p)]
+    @> [%expand pair_cancel_prod p xs]
+    @> [%expand list_prod_mod xs p]
+    @> simplify ()
+    @> cc;
+    (* else case: no pair, direct recursion *)
+    auto
+  ]]
+
+(* Connect pref_prod_mod to pair_cancel on range *)
+(* For this we need: list_prod_mod (range 1 k) p = pref_prod_mod p k *)
+(* This holds because both compute the product of {1,...,k} mod p *)
+lemma range_snoc lo hi =
+  lo <= hi ==> range lo hi = range lo (hi - 1) @ [hi]
+[@@by auto]
+
+lemma list_prod_mod_singleton x p =
+  p > 1 ==> list_prod_mod [x] p = x mod p
+[@@by auto]
+
+lemma range_prod_eq_pref p k =
+  p > 1 && k >= 0
+  ==> list_prod_mod (range 1 k) p = pref_prod_mod p k
+[@@by induction () @>| [
+  auto;
+  [%use range_snoc 1 k]
+  @> [%use list_prod_mod_append (range 1 (k - 1)) [k] p]
+  @> [%use list_prod_mod_singleton k p]
+  @> [%use mod_mul_comm (pref_prod_mod p (k - 1)) (k mod p) p]
+  @> auto]]
+
+(* Weakening: tighter range implies looser range *)
+lemma all_in_range_widen lo lo' hi xs =
+  lo <= lo' && all_in_range lo' hi xs ==> all_in_range lo hi xs
+[@@by auto]
+
+lemma all_in_range_widen_both lo lo' hi hi' xs =
+  lo <= lo' && hi' <= hi && all_in_range lo' hi' xs ==> all_in_range lo hi xs
+[@@by auto]
+
+lemma range_all_in_range lo hi =
+  all_in_range lo hi (range lo hi)
+[@@by induction () @>| [auto;
+  [%use all_in_range_widen lo (lo + 1) hi (range (lo + 1) hi)]
+  @> auto]]
+
+(* Badguy: mirrors pair_cancel but checks result = 1 *)
+let pc_check_measure (p : int) (xs : int list) = Ordinal.of_int (List.length xs)
+
+let rec pc_check (p : int) (xs : int list) : bool =
+  match xs with
+  | [] -> true
+  | a :: rest ->
+    if List.mem (inv_mod a p) rest then
+      pc_check p (remove (inv_mod a p) rest)
+    else
+      a mod p = 1 && p > 1 && pc_check p rest
+[@@measure pc_check_measure p xs]
+[@@by [%use remove_length (inv_mod (List.hd xs) p) (List.tl xs)] @> auto]
+
+(* If pc_check holds, pair_cancel = 1 *)
+lemma pc_check_implies_one p xs =
+  pc_check p xs ==> pair_cancel_prod p xs = 1
+[@@by auto]
+
+(* ============================================================
+   CLOSURE UNDER INVERSE: proving pc_check on the range
+   ============================================================ *)
+
+(* inv_mod 1 p = 1 for any prime p *)
+lemma inv_mod_one p =
+  is_prime p ==> inv_mod 1 p = 1
+[@@by
+  [%use inv_mod_works 1 p]
+  @> [%use inv_mod_range 1 p]
+  @> [%use mod_small (inv_mod 1 p) p]
+  @> auto]
+
+(* inv_mod is injective on [1, p-1] *)
+lemma inv_mod_injective a b p =
+  is_prime p && 1 <= a && a < p && 1 <= b && b < p
+  && inv_mod a p = inv_mod b p
+  ==> a = b
+[@@by
+  intros
+  @> [%use inv_mod_involution a p]
+  @> [%use inv_mod_involution b p]
+  @> [%use mod_small a p]
+  @> [%use mod_small b p]
+  @> auto]
+
+(* Every element of range [1, p-2] has its inverse in range [1, p-2] *)
+lemma inv_in_range k p =
+  is_prime p && 1 <= k && k <= p - 2
+  ==> List.mem (inv_mod k p) (range 1 (p - 2))
+[@@by [%use mem_range (inv_mod k p) 1 (p - 2)]
+   @> [%cases k >= 2] @>| [
+     [%use inv_mod_interior k p] @> auto;
+     [%use inv_mod_one p] @> auto
+   ]]
+
+(* all_inv_in: every element of xs has its inverse in ys *)
+let rec all_inv_in (p : int) (xs : int list) (ys : int list) : bool =
+  match xs with
+  | [] -> true
+  | a :: rest -> List.mem (inv_mod a p) ys && all_inv_in p rest ys
+
+(* Badguy for range: check each element's inv is in the full range *)
+let raim_measure (p : int) (lo : int) (hi : int) = Ordinal.of_int (max 0 (hi - lo + 1))
+
+let rec raim_check (p : int) (lo : int) (hi : int) : bool =
+  if lo > hi then true
+  else List.mem (inv_mod lo p) (range 1 (p - 2)) && raim_check p (lo + 1) hi
+[@@measure raim_measure p lo hi]
+
+lemma raim_check_eq_all_inv_in p lo hi =
+  raim_check p lo hi = all_inv_in p (range lo hi) (range 1 (p - 2))
+[@@by auto]
+
+lemma raim_check_true p lo hi =
+  is_prime p && lo >= 1 && hi <= p - 2
+  ==> raim_check p lo hi
+[@@by induction ()
+  @>| [auto;
+       [%use inv_in_range lo p] @> auto]]
+
+lemma range_all_inv_in p =
+  is_prime p ==> all_inv_in p (range 1 (p - 2)) (range 1 (p - 2))
+[@@by [%use raim_check_eq_all_inv_in p 1 (p - 2)]
+   @> [%use raim_check_true p 1 (p - 2)]
+   @> auto]
+
+(* Distinct elements *)
+let rec distinct (xs : int list) : bool =
+  match xs with
+  | [] -> true
+  | x :: rest -> not (List.mem x rest) && distinct rest
+
+lemma range_distinct lo hi =
+  distinct (range lo hi)
+[@@by auto]
+
+lemma distinct_tl xs =
+  xs <> [] && distinct xs ==> distinct (List.tl xs)
+[@@by auto]
+
+lemma distinct_hd_not_in_tl xs =
+  xs <> [] && distinct xs ==> not (List.mem (List.hd xs) (List.tl xs))
+[@@by auto]
+
+lemma distinct_remove x xs =
+  distinct xs ==> distinct (remove x xs)
+[@@by auto]
+
+lemma mem_remove_neq x y xs =
+  List.mem x xs && x <> y ==> List.mem x (remove y xs)
+[@@by auto]
+
+(* Monotonicity: adding an element to ys preserves all_inv_in *)
+lemma all_inv_in_weaken p xs ys z =
+  all_inv_in p xs ys ==> all_inv_in p xs (z :: ys)
+[@@by auto]
+
+(* Helper: if inv(c) ∈ (a :: b :: ys) and c ≠ a and c ≠ b,
+   then inv(c) ∈ ys, when b = inv(a) *)
+lemma inv_not_a_or_b c a b p =
+  is_prime p && 1 <= c && c < p && 1 <= a && a < p && 1 <= b && b < p
+  && c <> a && c <> b && inv_mod b p = a
+  ==> inv_mod c p <> a && inv_mod c p <> b
+[@@by
+  [%use inv_mod_injective c b p]
+  @> [%use inv_mod_involution b p]
+  @> [%use mod_small b p]
+  @> [%use inv_mod_injective c a p]
+  @> [%use inv_mod_involution a p]
+  @> [%use inv_mod_involution c p]
+  @> [%use mod_small a p]
+  @> [%use mod_small c p]
+  @> auto]
+
+(* If x ∈ a :: b :: ys and x ≠ a and x ≠ b, then x ∈ ys *)
+lemma mem_skip2 x a b ys =
+  List.mem x (a :: b :: ys) && x <> a && x <> b
+  ==> List.mem x ys
+[@@by auto]
+
+(* Narrowing: all_inv_in p xs (a :: b :: ys) with proper exclusions
+   implies all_inv_in p xs ys *)
+lemma all_inv_in_narrow p xs a b ys =
+  all_inv_in p xs (a :: b :: ys)
+  && is_prime p
+  && 1 <= a && a < p && 1 <= b && b < p
+  && inv_mod b p = a
+  && not (List.mem a xs) && not (List.mem b xs)
+  && all_in_range 2 (p - 2) xs
+  ==> all_inv_in p xs ys
+[@@by
+  induction ()
+  @>| [auto;
+       [%use inv_not_a_or_b (List.hd xs) a b p]
+       @> [%use mem_skip2 (inv_mod (List.hd xs) p) a b ys]
+       @> [%use all_in_range_mem (List.hd xs) 2 (p - 2) xs]
+       @> [%use hd_mem_cons xs]
+       @> [%use inv_mod_range (List.hd xs) p]
+       @> auto]]
+
+(* Helper: inv(b) ∈ remove(inv(a), xs) when b ≠ a, b ≠ inv(a) *)
+lemma all_inv_in_remove_step p b a xs =
+  is_prime p && 1 <= a && a < p && 1 <= b && b < p
+  && b <> a && b <> inv_mod a p
+  && List.mem (inv_mod b p) (a :: xs)
+  ==> List.mem (inv_mod b p) (remove (inv_mod a p) xs)
+[@@by
+  [%use inv_mod_injective a b p]
+  @> [%use inv_mod_involution a p]
+  @> [%use inv_mod_involution b p]
+  @> [%use mod_small a p]
+  @> [%use mod_small b p]
+  @> [%use mem_remove_neq (inv_mod b p) (inv_mod a p) xs]
+  @> auto]
+
+
+(* inv(inv(a)) = a for interior elements *)
+lemma inv_inv_eq a p =
+  is_prime p && 2 <= a && a <= p - 2
+  ==> inv_mod (inv_mod a p) p = a
+[@@by
+  [%use inv_mod_involution a p]
+  @> [%use mod_small a p]
+  @> auto]
+
+(* ---- Custom induction for all_inv_in_remove ---- *)
+
+(* Iterate over iter, checking each non-inv(a) element's inverse
+   is in remove(inv(a), xs). xs stays FIXED. *)
+let build_measure (p : int) (a : int) (iter : int list) (xs : int list) =
+  Ordinal.of_int (List.length iter)
+
+let rec build_air (p : int) (a : int) (iter : int list) (xs : int list) : bool =
+  match iter with
+  | [] -> true
+  | h :: t ->
+    if h = inv_mod a p then build_air p a t xs
+    else List.mem (inv_mod h p) (remove (inv_mod a p) xs)
+         && build_air p a t xs
+[@@measure build_measure p a iter xs]
+
+(* remove is identity when element not present *)
+lemma remove_absent x xs =
+  not (List.mem x xs) ==> remove x xs = xs
+[@@by auto]
+
+(* Forward: build_air implies all_inv_in on the result.
+   Key: iter shrinks, xs stays fixed. *)
+lemma build_air_implies p a iter xs =
+  build_air p a iter xs
+  && distinct iter
+  ==> all_inv_in p (remove (inv_mod a p) iter) (remove (inv_mod a p) xs)
+[@@by
+  induction ()
+  @>| [auto;
+       (* h = inv(a): remove(inv(a), h::t) = t.
+          IH gives all_inv_in p (remove(inv(a), t)) (remove(inv(a), xs)).
+          Since inv(a) = h ∉ t (distinct), remove(inv(a), t) = t.
+          So all_inv_in p t (remove(inv(a), xs)). *)
+       [%use remove_absent (inv_mod a p) (List.tl iter)]
+       @> auto;
+       (* h ≠ inv(a): remove = h :: remove(inv(a), t).
+          Need inv(h) ∈ remove(inv(a), xs) (from build_air)
+          and all_inv_in(remove(inv(a),t))(remove(inv(a),xs)) (from IH). *)
+       auto]]
+
+(* Backward: build_air holds from the hypotheses.
+   iter shrinks, xs stays fixed. *)
+lemma build_air_holds p a iter xs =
+  is_prime p
+  && all_inv_in p iter (a :: xs)
+  && distinct (a :: xs)
+  && all_in_range 2 (p - 2) iter
+  && 2 <= a && a <= p - 2
+  ==> build_air p a iter xs
+[@@by
+  induction ()
+  @>| [auto;
+       (* h = inv(a): skip *)
+       auto;
+       (* h ≠ inv(a): need inv(h) ∈ remove(inv(a), xs).
+          From all_inv_in: inv(h) ∈ (a :: xs).
+          h ≠ a (h ∈ iter ⊆ xs range, a ∉ xs from distinct).
+          h ≠ inv(a) (case condition).
+          So all_inv_in_remove_step gives inv(h) ∈ remove(inv(a), xs). *)
+       intros
+       @> [%expand all_inv_in p iter (a :: xs)]
+       @> [%use all_inv_in_remove_step p (List.hd iter) a xs]
+       @> [%use all_in_range_mem (List.hd iter) 2 (p - 2) iter]
+       @> [%use hd_mem_cons iter]
+       @> [%use inv_mod_interior (List.hd iter) p]
+       @> auto]]
+
+(* Main: all_inv_in_remove via build_air *)
+lemma all_inv_in_remove p a xs =
+  is_prime p
+  && all_inv_in p xs (a :: xs)
+  && distinct (a :: xs)
+  && all_in_range 2 (p - 2) xs
+  && 2 <= a && a <= p - 2
+  ==> all_inv_in p (remove (inv_mod a p) xs) (remove (inv_mod a p) xs)
+[@@by
+  [%use build_air_holds p a xs xs]
+  @> [%use build_air_implies p a xs xs]
+  @> auto]
+
+(* For head = 1 when 1 ∉ rest: else branch fires *)
+lemma pc_check_cons_one p xs =
+  is_prime p && pc_check p xs && not (List.mem 1 xs)
+  ==> pc_check p (1 :: xs)
+[@@by [%use inv_mod_one p]
+   @> [%expand pc_check p (1 :: xs)]
+   @> simplify ()
+   @> [%use one_mod_p p]
+   @> auto]
+
+(* range 1 (p-2) = 1 :: range 2 (p-2) when p >= 4 *)
+lemma range_cons_1 p =
+  p >= 4 ==> range 1 (p - 2) = 1 :: range 2 (p - 2)
+[@@by auto]
+
+(* 1 is not in range [2, p-2] *)
+lemma one_not_in_range2 p =
+  not (List.mem 1 (range 2 (p - 2)))
+[@@by [%use mem_range 1 2 (p - 2)] @> auto]
+
+(* pc_check on interior list where inv-closure holds *)
+lemma pc_check_closed p xs =
+  is_prime p
+  && all_in_range 2 (p - 2) xs
+  && all_inv_in p xs xs
+  && distinct xs
+  ==> pc_check p xs
+[@@by
+  induction ()
+  @>| [auto;
+       (* mem case: inv(hd) ∈ tl, pc_check removes it *)
+       intros
+       @> [%expand all_inv_in p xs xs]
+       @> [%use all_in_range_mem (List.hd xs) 2 (p - 2) xs]
+       @> [%use hd_mem_cons xs]
+       @> [%use all_inv_in_remove p (List.hd xs) (List.tl xs)]
+       @> [%use all_in_range_remove (inv_mod (List.hd xs) p) 2 (p - 2) (List.tl xs)]
+       @> [%use all_in_range_tl 2 (p - 2) xs]
+       @> [%use distinct_remove (inv_mod (List.hd xs) p) (List.tl xs)]
+       @> [%use distinct_tl xs]
+       @> [%use distinct_hd_not_in_tl xs]
+       @> auto;
+       (* else case: contradiction *)
+       (* all_inv_in gives inv(hd) ∈ xs, no_fixpoint gives inv(hd) ≠ hd,
+          so inv(hd) ∈ tl, contradicting the else condition *)
+       intros
+       @> [%expand all_inv_in p xs xs]
+       @> [%use all_in_range_mem (List.hd xs) 2 (p - 2) xs]
+       @> [%use hd_mem_cons xs]
+       @> [%use inv_mod_no_fixpoint (List.hd xs) p]
+       @> simplify ()
+       @> auto
+     ]]
+
+(* Badguy for range [2, p-2] inv-closure *)
+let raim2_measure (p : int) (lo : int) (hi : int) = Ordinal.of_int (max 0 (hi - lo + 1))
+
+let rec raim2_check (p : int) (lo : int) (hi : int) : bool =
+  if lo > hi then true
+  else List.mem (inv_mod lo p) (range 2 (p - 2)) && raim2_check p (lo + 1) hi
+[@@measure raim2_measure p lo hi]
+
+lemma raim2_check_eq p lo hi =
+  raim2_check p lo hi = all_inv_in p (range lo hi) (range 2 (p - 2))
+[@@by auto]
+
+lemma raim2_check_true p lo hi =
+  is_prime p && lo >= 2 && hi <= p - 2
+  ==> raim2_check p lo hi
+[@@by induction ()
+  @>| [auto;
+       [%use inv_mod_interior lo p]
+       @> [%use mem_range (inv_mod lo p) 2 (p - 2)]
+       @> auto]]
+
+lemma range2_all_inv_in p =
+  is_prime p ==> all_inv_in p (range 2 (p - 2)) (range 2 (p - 2))
+[@@by [%use raim2_check_eq p 2 (p - 2)]
+   @> [%use raim2_check_true p 2 (p - 2)]
+   @> auto]
+
+lemma pc_check_range p =
+  is_prime p ==> pc_check p (range 1 (p - 2))
+[@@by
+  [%cases p <= 3] @>| [
+    auto;
+    [%use range_cons_1 p]
+    @> [%use pc_check_cons_one p (range 2 (p - 2))]
+    @> [%use pc_check_closed p (range 2 (p - 2))]
+    @> [%use range2_all_inv_in p]
+    @> [%use range_distinct 2 (p - 2)]
+    @> [%use range_all_in_range 2 (p - 2)]
+    @> [%use one_not_in_range2 p]
+    @> auto
+  ]]
+
+(* The main result *)
+lemma interior_product_is_one p =
+  is_prime p ==> pref_prod_mod p (p - 2) = 1
+[@@by
+  intros
+  @> [%use range_prod_eq_pref p (p - 2)]
+  @> [%use range_all_in_range 1 (p - 2)]
+  @> simplify ()
+  @> [%use pair_cancel_eq_list_prod p (range 1 (p - 2))]
+  @> [%use pc_check_range p]
+  @> [%use pc_check_implies_one p (range 1 (p - 2))]
+  @> simplify ()
+  @> auto]
+
+(* ============================================================
+   WILSON'S THEOREM
+   ============================================================ *)
+
+lemma neg_one_mod p =
+  p > 1 ==> (-1) mod p = p - 1
+[@@by
+  intros
+  @> [%use mod_add (p - 1) 1 p]
+  @> [%use mod_self_zero p]
+  @> simplify ()
+  @> [%use mod_small (p - 1) p]
+  @> [%use mod_idem (-1) p]
+  @> auto]
+
+theorem wilson p =
+  is_prime p ==> Combinations.fact (p - 1) mod p = p - 1
+[@@by
+  intros
+  @> [%use pref_prod_eq_fact p (p - 1)]
+  @> [%use interior_product_is_one p]
+  @> simplify ()
+  @> [%use mod_small (p - 1) p]
+  @> auto]
+
+(* Test evaluations *)
+
+eval Combinations.fact 4 mod 5     (* 24 mod 5 = 4 = 5-1 ✓ *)
+eval Combinations.fact 6 mod 7     (* 720 mod 7 = 6 = 7-1 ✓ *)
+eval Combinations.fact 10 mod 11   (* 3628800 mod 11 = 10 = 11-1 ✓ *)
