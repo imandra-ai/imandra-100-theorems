@@ -1,0 +1,694 @@
+(* Euler's Generalization of Fermat's Little Theorem
+   Theorem 10 in the 100 Theorems list.
+
+   If gcd(a,n) = 1 and n >= 2, then a^phi(n) mod n = 1,
+   where phi(n) is Euler's totient function.
+
+   Grant Passmore, Imandra
+ *)
+
+[@@@import Inf_primes, "inf_primes.iml"]
+[@@@import GCD, "gcd.iml"]
+[@@@import Combinations, "combinations.iml"]
+[@@@import Wilson, "wilson.iml"]
+[@@@import Binomial, "binomial.iml"]
+
+open GCD
+open Combinations
+open Wilson
+open Binomial
+open Mod.Theorems
+
+(* ============================================================
+   EULER'S TOTIENT FUNCTION
+   ============================================================ *)
+
+(* List of integers in [1, k] coprime to n, built in descending order *)
+let coprime_list_measure (n : int) (k : int) = Ordinal.of_int (max 0 k)
+
+let rec coprime_list (n : int) (k : int) : int list =
+  if k <= 0 then []
+  else if gcd k n = 1 then k :: coprime_list n (k - 1)
+  else coprime_list n (k - 1)
+[@@measure coprime_list_measure n k]
+
+(* Euler's totient *)
+let phi (n : int) : int = List.length (coprime_list n (n - 1))
+
+(* ============================================================
+   PROPERTIES OF COPRIME_LIST
+   ============================================================ *)
+
+(* Membership characterization *)
+lemma mem_coprime_list a n k =
+  List.mem a (coprime_list n k) = (1 <= a && a <= k && gcd a n = 1)
+[@@by auto][@@rw]
+
+(* All elements are in range *)
+lemma coprime_list_in_range n k =
+  all_in_range 1 k (coprime_list n k)
+[@@by induction ()
+  @>| [auto;
+       [%use all_in_range_widen_both 1 1 k (k - 1) (coprime_list n (k - 1))]
+       @> auto;
+       [%use all_in_range_widen_both 1 1 k (k - 1) (coprime_list n (k - 1))]
+       @> auto]]
+
+(* Distinctness *)
+lemma coprime_list_distinct n k =
+  distinct (coprime_list n k)
+[@@by auto]
+
+(* ============================================================
+   GENERALIZED MODULAR INVERSE
+   (extending Wilson's inv_mod from primes to coprime moduli)
+   ============================================================ *)
+
+(* The same inv_mod works: inv_mod a n = fst(bezout_sub a n) mod n *)
+(* We just need to reprove the key properties under gcd(a,n) = 1 *)
+
+lemma inv_mod_gen_works a n =
+  n > 1 && 1 <= a && a < n && gcd a n = 1
+  ==> (a * inv_mod a n) mod n = 1
+[@@by
+  [%use bezout_inverse a n]
+  @> [%use gcd_eq_one_iff_bezout a n]
+  @> [%use mod_mul_right_mod a (fst (bezout_sub a n)) n]
+  @> auto]
+
+lemma inv_mod_gen_range a n =
+  n > 1 && 1 <= a && a < n && gcd a n = 1
+  ==> 1 <= inv_mod a n && inv_mod a n < n
+[@@by
+  [%use inv_mod_gen_works a n]
+  @> [%use mod_range (fst (bezout_sub a n)) n]
+  @> [%use mod_small (inv_mod a n) n]
+  @> auto]
+
+(* ============================================================
+   SCALING: multiply each coprime residue by a (mod n)
+   ============================================================ *)
+
+let rec scale_mod (a : int) (n : int) (xs : int list) : int list =
+  match xs with
+  | [] -> []
+  | x :: rest -> ((a * x) mod n) :: scale_mod a n rest
+
+(* Length preserved *)
+lemma scale_mod_length a n xs =
+  List.length (scale_mod a n xs) = List.length xs
+[@@by auto]
+
+(* Key: ((a*h) mod n * r) mod n = (a * (h * r) mod n) mod n *)
+lemma mod_prod_assoc a h r n =
+  n > 1 ==>
+  ((a * h) mod n * r) mod n = (a * ((h * r) mod n)) mod n
+[@@by
+  [%use mod_mul_right_mod a h n]
+  @> [%use mod_mul_left_mod (a * h) r n]
+  @> [%use mod_mul_right_mod a (h * r) n]
+  @> auto]
+
+(* (a*h)*(k*l) and (a*k)*(h*l) have the same value mod n *)
+lemma scale_step_mod a h k l n =
+  n <> 0 ==>
+  (a * h * (k * l)) mod n = (a * k * (h * l)) mod n
+[@@by auto]
+
+(* Step case: given IH for tl, derive for hd :: tl *)
+lemma scale_mod_product_step a n h tl_prod tl_scale_prod k =
+  n > 1
+  && tl_scale_prod = (k * tl_prod) mod n
+  ==> ((a * h) mod n * tl_scale_prod) mod n
+      = (a * k * (h * tl_prod)) mod n
+[@@by
+  intros
+  @> [%use mod_mul (a * h) (k * tl_prod) n]
+  @> [%use scale_step_mod a h k tl_prod n]
+  @> simplify ()]
+
+(* Full step case: connect expanded LHS/RHS via step lemma *)
+lemma scale_mod_product_full_step a n h tl_prod tl_scale_prod k =
+  n > 1
+  && tl_scale_prod = (k * tl_prod) mod n
+  ==> ((a * h) mod n * tl_scale_prod) mod n
+      = ((a * k) * ((h * tl_prod) mod n)) mod n
+[@@by
+  intros
+  @> [%use scale_mod_product_step a n h tl_prod tl_scale_prod k]
+  @> [%use mod_mul_right_mod (a * k) (h * tl_prod) n]
+  @> simplify ()]
+
+(* Product of scaled list = a^len * product of original (mod n) *)
+lemma scale_mod_product a n xs =
+  n > 1
+  ==> list_prod_mod (scale_mod a n xs) n
+      = (pow a (List.length xs) * list_prod_mod xs n) mod n
+[@@by
+  induction ()
+  @>| [[%use one_mod_p n] @> auto;
+       [%use scale_mod_product_full_step a n (List.hd xs)
+            (list_prod_mod (List.tl xs) n)
+            (list_prod_mod (scale_mod a n (List.tl xs)) n)
+            (pow a (List.length (List.tl xs)))]
+       @> auto]]
+
+(* ============================================================
+   COPRIMALITY OF PRODUCTS
+   ============================================================ *)
+
+(* gcd(a*b, n) = 1 when gcd(a,n) = 1 and gcd(b,n) = 1 *)
+(* Coprimality lifts over products: gcd(a*b, n) = 1 when gcd(a,n) = gcd(b,n) = 1 *)
+(* Proof: from Bezout, u*a + v*n = 1 and s*b + t*n = 1,
+   so (u*a)(s*b) + n*(...) = 1, i.e., (us)(ab) + n*(...) = 1 *)
+(* From Bezout: ua + vn = 1 and sb + tn = 1,
+   multiply: (ua)(sb) + n(uat + vsb + vtn) = 1
+   i.e. (us)(ab) + n(...) = 1, so gcd(ab, n) = 1. *)
+(* If gcd(a,n)=1, Bezout gives us u*a + v*n = 1 *)
+lemma bezout_from_coprime a n =
+  gcd a n = 1
+  ==> let (u, v) = bezout_sub a n in u * a + v * n = 1
+[@@by [%use bezout a n] @> auto]
+
+(* Multiply two Bezout identities: if ua + vn = 1 and sb + tn = 1,
+   then (us)(ab) + (uat + vsb + vtn)n = 1. *)
+lemma bezout_product u a v n s b t =
+  u * a + v * n = 1 && s * b + t * n = 1
+  ==> (u * s) * (a * b) + (u * a * t + v * s * b + v * t * n) * n = 1
+[@@by nonlin ()]
+
+(* Bezout identity for a product *)
+lemma bezout_for_product a b n =
+  gcd a n = 1 && gcd b n = 1
+  ==> let (u, v) = bezout_sub a n in
+      let (s, t) = bezout_sub b n in
+      (u * s) * (a * b) + (u * a * t + v * s * b + v * t * n) * n = 1
+[@@by
+  [%use bezout_from_coprime a n]
+  @> [%use bezout_from_coprime b n]
+  @> let (u, v) = bezout_sub a n in
+     let (s, t) = bezout_sub b n in
+     [%use bezout_product u a v n s b t]
+  @> auto]
+
+(* From Bezout identity for product, derive gcd = 1 *)
+(* If u*x + v*n = 1 for some u,v, then gcd(x,n) = 1.
+   Proof: gcd | x and gcd | n, so gcd | (u*x + v*n) = 1, so gcd = 1. *)
+lemma dvd_linear_combo d u x v n =
+  d > 0 && x mod d = 0 && n mod d = 0
+  ==> (u * x + v * n) mod d = 0
+[@@by
+  [%use mod_mul_preserves_zero u x d]
+  @> [%use mod_mul_preserves_zero v n d]
+  @> [%use dvd_add d (u * x) (v * n)]
+  @> auto]
+
+lemma gcd_pos_when_n_pos x n =
+  x >= 0 && n > 0 ==> gcd x n > 0
+[@@by [%use gcd_pos_from_nonneg_not_both_zero x n] @> auto]
+
+lemma gcd_from_bezout_coeffs x n u v =
+  x >= 0 && n > 0 && u * x + v * n = 1
+  ==> gcd x n = 1
+[@@by
+  intros
+  @> [%use gcd_pos_when_n_pos x n]
+  @> [%use gcd_dvd_both_pos x n]
+  @> [%use dvd_linear_combo (gcd x n) u x v n]
+  @> [%use one_mod_d_zero_implies_d1 (gcd x n)]
+  @> auto]
+
+lemma gcd_prod_coprime a b n =
+  gcd a n = 1 && gcd b n = 1 && a >= 0 && b >= 0 && n > 0
+  ==> gcd (a * b) n = 1
+[@@by
+  intros
+  @> [%use bezout_for_product a b n]
+  @> let (u, v) = bezout_sub a n in
+     let (s, t) = bezout_sub b n in
+     [%use gcd_from_bezout_coeffs (a * b) n (u * s)
+       (u * a * t + v * s * b + v * t * n)]
+  @> auto]
+
+(* (a * b) mod n is coprime to n when a and b are *)
+(* gcd(x mod n, n) = gcd(x, n) for x >= 0, n > 0 *)
+lemma gcd_mod_eq x n =
+  x >= 0 && n > 0 ==> gcd (x mod n) n = gcd x n
+[@@by
+  [%use gcd_remainder_step x n]
+  @> [%use gcd_comm x n]
+  @> [%use gcd_comm n (x mod n)]
+  @> auto]
+
+lemma gcd_mod_prod_coprime a b n =
+  gcd a n = 1 && gcd b n = 1 && a >= 0 && b >= 0 && n > 1
+  ==> gcd ((a * b) mod n) n = 1
+[@@by
+  [%use gcd_prod_coprime a b n]
+  @> [%use gcd_mod_eq (a * b) n]
+  @> auto]
+
+(* All elements coprime to n *)
+let rec all_coprime_to (n : int) (xs : int list) : bool =
+  match xs with
+  | [] -> true
+  | x :: rest -> gcd x n = 1 && all_coprime_to n rest
+
+(* coprime_list elements are all coprime to n *)
+lemma coprime_list_all_coprime n k =
+  all_coprime_to n (coprime_list n k)
+[@@by auto]
+
+(* Product of coprimes is coprime to n *)
+(* gcd(1, n) = 1 *)
+lemma gcd_one_left n = n >= 0 ==> gcd 1 n = 1
+[@@by
+  [%use gcd_from_bezout_coeffs 1 n 1 0]
+  @> auto]
+
+(* Product of coprimes is coprime to n *)
+lemma prod_coprime_to_n n xs =
+  n > 1 && all_coprime_to n xs && all_in_range 1 (n - 1) xs
+  ==> gcd (list_prod_mod xs n) n = 1
+[@@by
+  induction ()
+  @>| [[%use gcd_one_left n] @> [%use one_mod_p n] @> auto;
+       intros
+       @> [%use gcd_mod_prod_coprime (List.hd xs) (list_prod_mod (List.tl xs) n) n]
+       @> [%use all_in_range_mem (List.hd xs) 1 (n - 1) xs]
+       @> [%use hd_mem_cons xs]
+       @> [%use list_prod_mod_nonneg (List.tl xs) n]
+       @> [%use list_prod_mod_lt (List.tl xs) n]
+       @> [%use gcd_mod_eq (list_prod_mod (List.tl xs) n) n]
+       @> auto]]
+
+(* ============================================================
+   PERMUTATION: scale_mod gives a permutation of coprime_list
+   ============================================================ *)
+
+(* Each scaled element is coprime to n *)
+lemma scale_coprime a x n =
+  gcd a n = 1 && gcd x n = 1 && n > 1
+  ==> gcd ((a * x) mod n) n = 1
+[@@by [%use gcd_mod_prod_coprime a x n] @> auto]
+
+(* (a * x) mod n is nonzero when gcd(a*x, n) = 1 *)
+lemma mod_nonzero_from_coprime x n =
+  n > 1 && gcd x n = 1 && x >= 0
+  ==> x mod n >= 1
+[@@by
+  [%use mod_range x n]
+  @> [%use zero_mod n]
+  @> [%use gcd_mod_eq x n]
+  @> auto]
+
+(* Each scaled element is in [1, n-1] *)
+lemma scale_in_range a x n =
+  n > 1 && 1 <= x && x < n && gcd a n = 1 && gcd x n = 1 && 1 <= a && a < n
+  ==> 1 <= (a * x) mod n && (a * x) mod n < n
+[@@by
+  intros
+  @> [%use gcd_prod_coprime a x n]
+  @> [%use mod_nonzero_from_coprime (a * x) n]
+  @> [%use mod_range (a * x) n]
+  @> [%use mod_small (a * x) n]
+  @> auto]
+
+(* (a*x - a*y) mod n = 0 from (a*x) mod n = (a*y) mod n *)
+(* a ≡ b (mod n) iff (a - b) mod n = 0 *)
+lemma mod_sub_from_eq a b n =
+  n > 0 && a mod n = b mod n ==> (a - b) mod n = 0
+[@@by
+  intros
+  @> [%use div_mod a n]
+  @> [%use div_mod b n]
+  @> [%use mod_mul_preserves_zero (a / n - b / n) n n]
+  @> [%use mod_self_zero n]
+  @> simplify ()]
+
+lemma mod_eq_implies_diff_zero a x y n =
+  n > 0 && (a * x) mod n = (a * y) mod n
+  ==> (a * (x - y)) mod n = 0
+[@@by [%use mod_sub_from_eq (a * x) (a * y) n] @> auto]
+
+(* (x - y) mod n = 0 implies x mod n = y mod n *)
+lemma diff_mod_zero_eq x y n =
+  n > 0 && (x - y) mod n = 0 ==> x mod n = y mod n
+[@@by
+  intros
+  @> [%use mod_add (x - y) y n]
+  @> [%use zero_mod n]
+  @> [%use mod_idem y n]
+  @> simplify ()]
+
+(* Cancellation law: if gcd(a,n) = 1 and a*x = a*y (mod n), then x = y (mod n) *)
+lemma cancel_mod a x y n =
+  n > 1 && gcd a n = 1 && (a * x) mod n = (a * y) mod n
+  ==> x mod n = y mod n
+[@@by
+  intros
+  @> [%use mod_eq_implies_diff_zero a x y n]
+  @> [%use euclid_lemma n a (x - y)]
+  @> [%use gcd_comm a n]
+  @> [%use diff_mod_zero_eq x y n]
+  @> auto]
+
+(* Injectivity of scaling on [1, n-1] *)
+lemma scale_injective a x y n =
+  n > 1 && gcd a n = 1
+  && 1 <= x && x < n && 1 <= y && y < n
+  && (a * x) mod n = (a * y) mod n
+  ==> x = y
+[@@by
+  [%use cancel_mod a x y n]
+  @> [%use mod_small x n]
+  @> [%use mod_small y n]
+  @> auto]
+
+(* ============================================================
+   PERMUTATION PRODUCT EQUALITY
+
+   scale_mod a n (coprime_list n (n-1)) is a permutation of
+   coprime_list n (n-1), so their products mod n are equal.
+
+   We prove this via: distinct + same length + subset => perm
+   => equal product.
+   ============================================================ *)
+
+(* Contrapositive of scale_injective *)
+lemma scale_neq a x y n =
+  n > 1 && gcd a n = 1 && 1 <= x && x < n && 1 <= y && y < n
+  && x <> y
+  ==> (a * x) mod n <> (a * y) mod n
+[@@by [%use scale_injective a x y n] @> auto]
+
+(* Fully specialized step: combines neq + not_mem_tl => not_mem_cons *)
+lemma scale_not_mem_step a n x h t =
+  n > 1 && gcd a n = 1
+  && x <> h && 1 <= x && x < n && 1 <= h && h < n
+  && not (List.mem ((a * x) mod n) (scale_mod a n t))
+  ==> not (List.mem ((a * x) mod n) ((a * h) mod n :: scale_mod a n t))
+[@@by
+  intros
+  @> [%use scale_neq a x h n]
+  @> simplify ()]
+
+(* Shrink: all_in_range (x :: h :: t) implies all_in_range (x :: t) *)
+lemma all_in_range_skip_hd lo hi x xs =
+  xs <> [] && all_in_range lo hi (x :: xs)
+  ==> all_in_range lo hi (x :: List.tl xs)
+[@@by auto]
+
+(* Custom induction for scale_not_mem: iterate over xs while a, n, x stay fixed *)
+let snm_ind_measure (a : int) (n : int) (x : int) (xs : int list) =
+  Ordinal.of_int (List.length xs)
+
+let rec snm_ind (a : int) (n : int) (x : int) (xs : int list) : bool =
+  match xs with
+  | [] -> true
+  | _ :: t -> snm_ind a n x t
+[@@measure snm_ind_measure a n x xs]
+
+(* If x not in xs, then (a*x) mod n not in scale_mod a n xs *)
+lemma scale_not_mem a n x xs =
+  n > 1 && gcd a n = 1
+  && not (List.mem x xs) && all_in_range 1 (n - 1) (x :: xs)
+  ==> not (List.mem ((a * x) mod n) (scale_mod a n xs))
+[@@by
+  induction ~id:[%id snm_ind] ()
+  @>| [auto;
+       [%use scale_neq a x (List.hd xs) n]
+       @> [%use all_in_range_skip_hd 1 (n - 1) x xs]
+       @> [%use all_in_range_mem (List.hd xs) 1 (n - 1) (x :: xs)]
+       @> [%use all_in_range_mem x 1 (n - 1) (x :: xs)]
+       @> [%use hd_mem_cons xs]
+       @> [%norm scale_mod a n xs]
+       @> simplify ()]]
+
+(* scale_mod preserves distinctness *)
+lemma scale_mod_distinct a n xs =
+  n > 1 && gcd a n = 1
+  && distinct xs && all_in_range 1 (n - 1) xs
+  ==> distinct (scale_mod a n xs)
+[@@by
+  induction ()
+  @>| [auto;
+       [%use scale_not_mem a n (List.hd xs) (List.tl xs)]
+       @> [%use distinct_hd_not_in_tl xs]
+       @> auto]]
+[@@disable gcd]
+
+(* ============================================================
+   FINAL ASSEMBLY: Euler's Theorem
+   ============================================================ *)
+
+(* Every scaled element is coprime to n *)
+lemma scale_mod_all_coprime a n xs =
+  n > 1 && gcd a n = 1 && all_coprime_to n xs
+  && all_in_range 1 (n - 1) xs
+  ==> all_coprime_to n (scale_mod a n xs)
+[@@by
+  induction ()
+  @>| [auto;
+       [%use gcd_mod_prod_coprime a (List.hd xs) n]
+       @> [%use all_in_range_mem (List.hd xs) 1 (n - 1) xs]
+       @> [%use hd_mem_cons xs]
+       @> auto]]
+
+(* Every scaled element is in [1, n-1] *)
+lemma scale_mod_in_range a n xs =
+  n > 1 && gcd a n = 1 && 1 <= a && a < n
+  && all_coprime_to n xs && all_in_range 1 (n - 1) xs
+  ==> all_in_range 1 (n - 1) (scale_mod a n xs)
+[@@by
+  induction ()
+  @>| [auto;
+       [%use scale_in_range a (List.hd xs) n]
+       @> [%use all_in_range_mem (List.hd xs) 1 (n - 1) xs]
+       @> [%use hd_mem_cons xs]
+       @> auto]]
+
+(* Every scaled element is in coprime_list *)
+lemma scale_mod_mem_coprime_list a n x =
+  n > 1 && gcd a n = 1 && 1 <= a && a < n
+  && 1 <= x && x < n && gcd x n = 1
+  ==> List.mem ((a * x) mod n) (coprime_list n (n - 1))
+[@@by
+  [%use mem_coprime_list ((a * x) mod n) n (n - 1)]
+  @> [%use scale_in_range a x n]
+  @> [%use gcd_mod_prod_coprime a x n]
+  @> auto]
+
+(* subset: every element of xs is in ys *)
+let rec all_mem_of (xs : int list) (ys : int list) : bool =
+  match xs with
+  | [] -> true
+  | x :: rest -> List.mem x ys && all_mem_of rest ys
+
+(* Every element of scale_mod is in coprime_list *)
+lemma scale_mod_subset a n xs =
+  n > 1 && gcd a n = 1 && 1 <= a && a < n
+  && all_coprime_to n xs && all_in_range 1 (n - 1) xs
+  ==> all_mem_of (scale_mod a n xs) (coprime_list n (n - 1))
+[@@by
+  induction ()
+  @>| [auto;
+       [%use scale_mod_mem_coprime_list a n (List.hd xs)]
+       @> [%use all_in_range_mem (List.hd xs) 1 (n - 1) xs]
+       @> [%use hd_mem_cons xs]
+       @> auto]]
+
+(* Key: cancellation gives the theorem *)
+(* If P = list_prod_mod (coprime_list n (n-1)) n,
+   then a^phi(n) * P ≡ P (mod n).
+   Since gcd(P, n) = 1, cancel P to get a^phi(n) ≡ 1. *)
+(* Helper: (a*b - b) = (a - 1) * b *)
+lemma factor_out_diff a b =
+  a * b - b = (a - 1) * b
+[@@by auto]
+
+(* Intermediate: from product congruence and coprimality, derive pow ≡ 1 *)
+lemma euler_cancel_step1 n p_prod k =
+  n > 1 && gcd p_prod n = 1 && (k * p_prod) mod n = p_prod mod n
+  ==> ((k - 1) * p_prod) mod n = 0
+[@@by
+  intros
+  @> [%use mod_sub_from_eq (k * p_prod) p_prod n]
+  @> [%use factor_out_diff k p_prod]
+  @> simplify ()]
+
+lemma euler_cancel_step2 n p_prod k =
+  n > 1 && gcd p_prod n = 1 && ((k - 1) * p_prod) mod n = 0
+  ==> (k - 1) mod n = 0
+[@@by
+  intros
+  @> [%use euclid_lemma n p_prod (k - 1)]
+  @> simplify ()]
+
+lemma euler_cancel_step3 n k =
+  n > 1 && (k - 1) mod n = 0
+  ==> k mod n = 1
+[@@by
+  intros
+  @> [%use diff_mod_zero_eq k 1 n]
+  @> [%use one_mod_p n]
+  @> simplify ()]
+
+lemma euler_cancellation a n p_prod =
+  n > 1 && gcd p_prod n = 1
+  && (pow a (phi n) * p_prod) mod n = p_prod mod n
+  ==> pow a (phi n) mod n = 1
+[@@by
+  intros
+  @> [%use euler_cancel_step1 n p_prod (pow a (phi n))]
+  @> [%use euler_cancel_step2 n p_prod (pow a (phi n))]
+  @> [%use euler_cancel_step3 n (pow a (phi n))]
+  @> simplify ()]
+
+(* ============================================================
+   PERMUTATION PRODUCT EQUALITY
+
+   If xs and ys are distinct, same length, and every element of
+   xs is in ys, then list_prod_mod xs n = list_prod_mod ys n.
+   ============================================================ *)
+
+(* Pigeonhole: distinct + same length + subset => equal products *)
+(* We prove by induction on xs: extract each hd from ys, factor it out *)
+(* all_mem_of hd: if all_mem_of (x :: xs) ys, then x ∈ ys *)
+lemma all_mem_of_hd x xs ys =
+  all_mem_of (x :: xs) ys ==> List.mem x ys
+[@@by auto]
+
+(* all_mem_of tl: if all_mem_of (x :: xs) ys, then all_mem_of xs ys *)
+lemma all_mem_of_tl x xs ys =
+  all_mem_of (x :: xs) ys ==> all_mem_of xs ys
+[@@by auto]
+
+(* Subset preserved through remove when distinct *)
+lemma all_mem_of_remove_step xs x ys =
+  all_mem_of xs ys && distinct (x :: xs)
+  ==> all_mem_of xs (remove x ys)
+[@@by
+  induction ()
+  @>| [auto;
+       [%use mem_remove_neq (List.hd xs) x ys]
+       @> auto]]
+
+(* Length decreases by 1 when removing a present element *)
+lemma remove_length_eq x ys =
+  distinct ys && List.mem x ys
+  ==> List.length (remove x ys) = List.length ys - 1
+[@@by auto]
+
+(* Custom induction: shrink xs, keeping ys parameter separate *)
+let ppe_ind_measure (xs : int list) (ys : int list) (n : int) =
+  Ordinal.of_int (List.length xs)
+
+let rec ppe_ind (xs : int list) (ys : int list) (n : int) : bool =
+  match xs with
+  | [] -> true
+  | h :: t -> ppe_ind t (remove h ys) n
+[@@measure ppe_ind_measure xs ys n]
+
+(* Step: if lp(tl) = lp(remove hd ys) and lp(ys) = (hd * lp(remove)) mod n,
+   then lp(xs) = lp(ys) *)
+lemma perm_prod_step h lp_tl lp_remove lp_ys n =
+  n > 1
+  && lp_tl = lp_remove
+  && lp_ys = (h * lp_remove) mod n
+  ==> (h * lp_tl) mod n = lp_ys
+[@@by unroll 3]
+
+lemma perm_prod_eq xs ys n =
+  n > 1 && distinct xs && distinct ys
+  && List.length xs = List.length ys
+  && all_mem_of xs ys
+  && all_in_range 1 (n - 1) ys
+  ==> list_prod_mod xs n = list_prod_mod ys n
+[@@by
+  induction ~id:[%id ppe_ind] ()
+  @>| [auto;
+       intros
+       @> [%use list_prod_remove (List.hd xs) ys n]
+       @> [%use all_mem_of_hd (List.hd xs) (List.tl xs) ys]
+       @> [%use distinct_remove (List.hd xs) ys]
+       @> [%use all_in_range_remove (List.hd xs) 1 (n - 1) ys]
+       @> [%use all_mem_of_remove_step (List.tl xs) (List.hd xs) ys]
+       @> [%use all_mem_of_tl (List.hd xs) (List.tl xs) ys]
+       @> [%use remove_length_eq (List.hd xs) ys]
+       @> [%use distinct_tl xs]
+       @> [%use distinct_hd_not_in_tl xs]
+       (* Establish ALL IH conditions + list_prod_remove as one subgoal *)
+       @> [%subgoal (list_prod_mod (List.tl xs) n
+                   = list_prod_mod (remove (List.hd xs) ys) n
+                   && list_prod_mod ys n
+                      = (List.hd xs * list_prod_mod (remove (List.hd xs) ys) n) mod n)]
+       @>| [[%use all_mem_of_hd (List.hd xs) (List.tl xs) ys]
+            @> [%use remove_length_eq (List.hd xs) ys]
+            @> [%use all_in_range_remove (List.hd xs) 1 (n - 1) ys]
+            @> [%use list_prod_remove (List.hd xs) ys n]
+            @> auto;
+            (* With IH result + list_prod_remove, perm_prod_step closes it *)
+            [%use perm_prod_step (List.hd xs)
+                 (list_prod_mod (List.tl xs) n)
+                 (list_prod_mod (remove (List.hd xs) ys) n)
+                 (list_prod_mod ys n) n]
+            @> simplify ()
+            @>| [auto; auto]]]]
+[@@disable gcd, bezout_sub]
+
+(* ============================================================
+   EULER'S THEOREM
+   ============================================================ *)
+
+(* Combine steps 1-3 into a single chain *)
+lemma euler_step1 a n =
+  n >= 2 && 1 <= a && a < n && gcd a n = 1
+  ==> list_prod_mod (scale_mod a n (coprime_list n (n - 1))) n
+      = list_prod_mod (coprime_list n (n - 1)) n
+[@@by
+  [%use perm_prod_eq (scale_mod a n (coprime_list n (n - 1)))
+       (coprime_list n (n - 1)) n]
+  @> [%use scale_mod_distinct a n (coprime_list n (n - 1))]
+  @> [%use coprime_list_distinct n (n - 1)]
+  @> [%use scale_mod_length a n (coprime_list n (n - 1))]
+  @> [%use scale_mod_subset a n (coprime_list n (n - 1))]
+  @> [%use coprime_list_in_range n (n - 1)]
+  @> [%use coprime_list_all_coprime n (n - 1)]
+  @> auto]
+
+lemma euler_step2 a n =
+  n >= 2 && 1 <= a && a < n && gcd a n = 1
+  ==> (pow a (phi n) * list_prod_mod (coprime_list n (n - 1)) n) mod n
+      = list_prod_mod (coprime_list n (n - 1)) n
+[@@by
+  [%use euler_step1 a n]
+  @> [%use scale_mod_product a n (coprime_list n (n - 1))]
+  @> unroll 10]
+
+lemma euler_step3 n =
+  n >= 2 ==> gcd (list_prod_mod (coprime_list n (n - 1)) n) n = 1
+[@@by
+  [%use prod_coprime_to_n n (coprime_list n (n - 1))]
+  @> [%use coprime_list_all_coprime n (n - 1)]
+  @> [%use coprime_list_in_range n (n - 1)]
+  @> unroll 10]
+
+(* At last, our main result! Euler's generalization of Fermat's Little Theorem!
+
+   If gcd(a,n) = 1 and n >= 2, then a^phi(n) mod n = 1.
+
+ *)
+
+theorem euler a n =
+  n >= 2 && 1 <= a && a < n && gcd a n = 1
+  ==> pow a (phi n) mod n = 1
+[@@by
+  intros
+  @> [%use euler_step2 a n]
+  @> [%use euler_step3 n]
+  @> [%use euler_cancellation a n (list_prod_mod (coprime_list n (n - 1)) n)]
+  @> [%use mod_small (list_prod_mod (coprime_list n (n - 1)) n) n]
+  @> [%use list_prod_mod_lt (coprime_list n (n - 1)) n]
+  @> [%use list_prod_mod_nonneg (coprime_list n (n - 1)) n]
+  @> unroll 10]
