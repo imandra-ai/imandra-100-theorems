@@ -4,11 +4,12 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **25/100**:
+Currently, we have proven **26/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
 4\. [Pythagorean Theorem](#thm-4)  
+10\. [Euler's Generalization of Fermat's Little Theorem](#thm-10)  
 11\. [Infinitude of Primes](#thm-11)  
 34\. [Divergence of the Harmonic Series](#thm-34)  
 38\. [Arithmetic Mean/Geometric Mean](#thm-38)  
@@ -100,6 +101,27 @@ $$|AB|^2 = |AC|^2 + |BC|^2.$$
 ```ocaml
 theorem pythagoras (a : point) (b : point) (c : point) =
   right_at c a b ==> dist2 a b = Real.(dist2 a c + dist2 b c)
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-10"></a>
+## 10. Euler's Generalization of Fermat's Little Theorem
+
+[Source: src/euler.iml](src/euler.iml)
+
+*Statement (informal):*
+If $\gcd(a, n) = 1$ and $n \ge 2$, then $a^{\varphi(n)} \equiv 1 \pmod{n}$, where $\varphi(n)$ is Euler's totient function.
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem euler a n =
+  n >= 2 && 1 <= a && a < n && gcd a n = 1
+  ==> pow a (phi n) mod n = 1
 ```
 </details>
 
@@ -676,11 +698,9 @@ The smallest number of people for which the probability of a shared birthday exc
 <summary><strong>Imandra statement</strong></summary>
 
 ```ocaml
-theorem birthday_probability_23 =
-  collision_prob 23 >. 0.5
-
-theorem birthday_probability_22_sharp =
-  collision_prob 22 <=. 0.5
+theorem birthday_problem k =
+  (0 <= k && k <= 22 ==> collision_prob k <=. 0.5)
+  && (k = 23 ==> collision_prob k >. 0.5)
 ```
 </details>
 
