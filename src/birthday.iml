@@ -117,3 +117,30 @@ theorem birthday_probability_22_sharp =
   @> [%use int_pow_pos 365 22]
   @> [%use int_ineq_to_real_ge (falling_fact 365 22) (int_pow 365 22)]
   @> auto]
+
+let rec forall_in_range p n m =
+  if n > m then true
+  else p n && forall_in_range p (n+1) m
+[@@measure Ordinal.of_int (m-n)]
+
+lemma range_elim p k n m =
+  forall_in_range p n m && n <= k && k <= m
+  ==>
+  p k
+[@@by auto]
+
+lemma birthday_problem_upto_22 k =
+  0 <= k && k <= 22
+  ==>
+  collision_prob k <=. 0.5
+[@@by intros @> [%use range_elim (fun k -> collision_prob k <=. 0.5) k 0 22]
+      @> auto]
+
+(* All together now! *)
+
+theorem birthday_problem k =
+  (0 <= k && k <= 22 ==> collision_prob k <=. 0.5)
+  && (k = 23 ==> collision_prob k >. 0.5)
+[@@by [%use birthday_problem_upto_22 k]
+   @> [%use birthday_probability_23]
+   @> auto]

@@ -606,33 +606,6 @@ theorem sum_digits_preserves_mod3 n =
 [Back to list](#status)
 
 
-<a id="thm-91"></a>
-## 91. The Triangle Inequality
-
-[Source: src/tri_ineq.iml](src/tri_ineq.iml)
-
-*Statement (informal):*  
-
-For all vectors $x, y$ in the plane, the length of their sum is at most the sum of their lengths:
-
-$$\|x + y\| \le \|x\| + \|y\|.$$
-
-<details open>
-<summary><strong>Imandra statement</strong></summary>
-
-```ocaml
-theorem triangle_inequality (x:R2.vec) (y:R2.vec) (nx:real) (ny:real) (nxy:real) =
-  let open Real in
-  let open R2 in
-  nx >= 0.0 && ny >= 0.0 && nxy >= 0.0 &&
-  nx * nx = norm x && ny * ny = norm y && nxy * nxy = norm (add x y)
-  ==> nxy <= nx + ny
-```
-</details>
-
-[Back to list](#status)
-
-
 <a id="thm-88"></a>
 ## 88. Derangements Formula
 
@@ -679,6 +652,33 @@ theorem remainder_theorem p a x =
 theorem factor_remainder p a x =
   poly_eval p a = 0.0
   = (poly_eval p x = Real.((x - a) * poly_eval (synth_div p a) x))
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-91"></a>
+## 91. The Triangle Inequality
+
+[Source: src/tri_ineq.iml](src/tri_ineq.iml)
+
+*Statement (informal):*  
+
+For all vectors $x, y$ in the plane, the length of their sum is at most the sum of their lengths:
+
+$$\|x + y\| \le \|x\| + \|y\|.$$
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem triangle_inequality (x:R2.vec) (y:R2.vec) (nx:real) (ny:real) (nxy:real) =
+  let open Real in
+  let open R2 in
+  nx >= 0.0 && ny >= 0.0 && nxy >= 0.0 &&
+  nx * nx = norm x && ny * ny = norm y && nxy * nxy = norm (add x y)
+  ==> nxy <= nx + ny
 ```
 </details>
 
