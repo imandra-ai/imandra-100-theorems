@@ -4,7 +4,7 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **26/100**:
+Currently, we have proven **27/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
@@ -24,6 +24,7 @@ Currently, we have proven **26/100**:
 66\. [Sum of a Geometric Series](#thm-66)  
 68\. [Sum of an Arithmetic Series](#thm-68)  
 69\. [Greatest Common Divisor Algorithm](#thm-69)  
+73\. [Ascending or Descending Sequences (Erdos-Szekeres)](#thm-73)  
 74\. [Principle of Mathematical Induction](#thm-74)  
 78\. [Cauchy-Schwarz Inequality](#thm-78)  
 80\. [The Fundamental Theorem of Arithmetic](#thm-80)  
@@ -494,6 +495,33 @@ theorem gcd_dvd_both_pos a b =
 
 theorem gcd_absorbs_common_divisor d a b =
   d > 0 && a mod d = 0 && b mod d = 0 ==> (gcd a b) mod d = 0
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-73"></a>
+## 73. Ascending or Descending Sequences (Erdos-Szekeres)
+
+[Source: src/ascending.iml](src/ascending.iml)
+
+*Statement (informal):*
+
+If $l$ is a list of distinct reals of length $> rs$, then $l$ has an ascending subsequence of length $> r$ or a descending subsequence of length $> s$.
+
+Equivalently, any sequence of more than $(r{-}1)(s{-}1)$ distinct reals contains an ascending subsequence of length $\ge r$ or a descending subsequence of length $\ge s$.
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem erdos_szekeres l r s =
+  dlistp l
+  && List.length l > r * s
+  && r >= 0 && s >= 0
+  ==> List.length (longest_ascending_subseq l) > r
+      || List.length (longest_descending_subseq l) > s
 ```
 </details>
 

@@ -1,0 +1,1286 @@
+(* Erdos-Szekeres Theorem: Ascending or Descending Sequences
+   Theorem 73 in the 100 Theorems list.
+
+   If l is a list of distinct rationals of length > (a-1)(b-1),
+   then l has an ascending subsequence of length >= a
+   or a descending subsequence of length >= b.
+
+   Grant Passmore, Imandra
+
+   *Finished while 40,000 feet up, en route from Austin to Boston!
+ *)
+
+(* ============================================================
+   SUBSEQUENCES
+   ============================================================ *)
+
+let rec subseqp (l : 'a list) (m : 'a list) : bool =
+  match l, m with
+  | [], _ -> true
+  | x :: xs, y :: ys -> if x = y then subseqp xs ys else subseqp l ys
+  | _ -> false
+[@@adm m]
+
+(* Distinct list, i.e., a list with no duplicates *)
+let rec dlistp (l : 'a list) : bool =
+  match l with
+  | [] -> true
+  | x :: xs -> not (List.mem x xs) && dlistp xs
+
+(* Cons onto each element of a list of lists *)
+let rec conses (x : 'a) (ll : 'a list list) : 'a list list =
+  match ll with
+  | [] -> []
+  | s :: ss -> (x :: s) :: conses x ss
+
+(* ============================================================
+   ASCENDING AND DESCENDING
+   ============================================================ *)
+
+let rec ascendingp (l : real list) : bool =
+  match l with
+  | x :: y :: rest -> x <. y && ascendingp (y :: rest)
+  | _ -> true
+[@@by auto]
+
+let rec descendingp (l : real list) : bool =
+  match l with
+  | x :: y :: rest -> x >. y && descendingp (y :: rest)
+  | _ -> true
+[@@by auto]
+
+(* ============================================================
+   ENUMERATE ALL ASCENDING SUBSEQUENCES
+   ============================================================ *)
+
+let rec ascending_subseqs_aux (x : real) (l : real list) : real list list =
+  match l with
+  | [] -> [[]]
+  | y :: ys ->
+    if x <. y then
+      conses y (ascending_subseqs_aux y ys) @ ascending_subseqs_aux x ys
+    else
+      ascending_subseqs_aux x ys
+[@@adm l]
+
+let rec ascending_subseqs (l : real list) : real list list =
+  match l with
+  | [] -> [[]]
+  | x :: xs ->
+    conses x (ascending_subseqs_aux x xs) @ ascending_subseqs xs
+[@@measure Ordinal.of_int (List.length l)]
+[@@by auto]
+
+(* ============================================================
+   ENUMERATE ALL DESCENDING SUBSEQUENCES
+   ============================================================ *)
+
+let rec descending_subseqs_aux (x : real) (l : real list) : real list list =
+  match l with
+  | [] -> [[]]
+  | y :: ys ->
+    if x >. y then
+      conses y (descending_subseqs_aux y ys) @ descending_subseqs_aux x ys
+    else
+      descending_subseqs_aux x ys
+[@@adm l]
+
+let rec descending_subseqs (l : real list) : real list list =
+  match l with
+  | [] -> [[]]
+  | x :: xs ->
+    conses x (descending_subseqs_aux x xs) @ descending_subseqs xs
+[@@measure Ordinal.of_int (List.length l)]
+[@@by auto]
+
+(* ============================================================
+   TEST EVALUATIONS
+   ============================================================ *)
+
+eval ascending_subseqs [1.0; 3.0; 2.0; 4.0]
+eval descending_subseqs [1.0; 3.0; 2.0; 4.0]
+
+(* A useful tactic *)
+
+let crush = Tactic.unroll 10
+
+(* ============================================================
+   BASIC SUBSEQUENCE LEMMAS
+   ============================================================ *)
+
+lemma mem_append (x : 'a) (y : 'a list) (z : 'a list) =
+  List.mem x (y @ z) = (List.mem x y || List.mem x z)
+[@@by auto][@@rw]
+
+lemma mem_conses_char (a : 'a) (ll : 'a list list) (s : 'a list) =
+  List.mem s (conses a ll)
+  = (s <> [] && List.hd s = a && List.mem (List.tl s) ll)
+[@@by auto][@@rw]
+
+lemma subseq_nil xs = subseqp ([] : 'a list) xs
+[@@by auto][@@rw]
+
+lemma subseqp_refl (u : 'a list) = subseqp u u
+[@@by auto][@@rw]
+
+lemma subseq_r_nil (s : 'a list) =
+  subseqp s [] = (s = [])
+[@@by auto][@@rw]
+
+(* Helper induction function matching subseqp's recursion *)
+let rec fun_induct (s : real list) (xs : real list) =
+  if s = [] || xs = [] then 0
+  else fun_induct (List.tl s) xs
+     + fun_induct s (List.tl xs)
+     + fun_induct (List.tl s) (List.tl xs)
+[@@adm s, xs]
+
+(* Tail weakening: subsequence of tl is a subsequence *)
+lemma subseq_tail_weak_h (s : real list) xs =
+  s <> [] && subseqp s xs && fun_induct s xs = fun_induct s xs
+  ==> subseqp (List.tl s) xs
+[@@by induction ~id:[%id fun_induct] ()
+  @>>| auto]
+
+lemma subseq_tail_weak (s : real list) xs =
+  s <> [] && subseqp s xs ==> subseqp (List.tl s) xs
+[@@by [%use subseq_tail_weak_h s xs] @> auto]
+
+lemma subseq_right_mono_h (s : real list) xs a =
+  subseqp s xs && fun_induct s xs = fun_induct s xs
+  ==> subseqp s (a :: xs)
+[@@by induction ~id:[%id fun_induct] ()
+  @>| [auto;
+       [%use subseq_tail_weak s xs]
+       @> auto]]
+
+lemma subseq_right_mono (s : real list) xs a =
+  subseqp s xs ==> subseqp s (a :: xs)
+[@@by [%use subseq_right_mono_h s xs a] @> auto]
+
+(* ============================================================
+   LONGEST MEMBER OF A LIST OF LISTS
+   ============================================================ *)
+
+let rec longest (l : 'a list list) : 'a list =
+  match l with
+  | [] -> []
+  | [x] -> x
+  | x :: rest ->
+    let m = longest rest in
+    if List.length x >= List.length m then x else m
+
+lemma longest_mem l =
+  (l : 'a list list) <> [] ==> List.mem (longest l) l
+[@@by auto]
+
+lemma longest_longest l (s : 'a list) =
+  List.mem s l ==> List.length s <= List.length (longest l)
+[@@by auto]
+
+(* ============================================================
+   LONGEST ASCENDING/DESCENDING SUBSEQUENCES
+   ============================================================ *)
+
+let longest_ascending_subseq (l : real list) : real list =
+  longest (ascending_subseqs l)
+
+let longest_descending_subseq (l : real list) : real list =
+  longest (descending_subseqs l)
+
+(* Some more test evaluations *)
+
+eval longest_ascending_subseq [1.0; 3.0; 2.0; 4.0]
+eval longest_descending_subseq [3.0; 1.0; 4.0; 2.0]
+eval List.length (longest_ascending_subseq [1.0; 3.0; 2.0; 4.0])
+
+(* ============================================================
+   CHARACTERIZATION OF ASCENDING_SUBSEQS_AUX
+
+   mem t (ascending_subseqs_aux x l) iff subseqp t l && ascendingp (x :: t)
+   ============================================================ *)
+
+(* Custom induction matching ascending_subseqs_aux recursion *)
+let rec aux_induct (x : real) (xs : real list) (t : real list) : int =
+  if xs = [] then 0
+  else
+    aux_induct x (List.tl xs) t
+  + aux_induct (List.hd xs) (List.tl xs) (List.tl t)
+[@@adm xs]
+
+(* Forward: membership implies subsequence *)
+lemma mem_aux_subseq x xs t =
+  List.mem t (ascending_subseqs_aux x xs)
+  && aux_induct x xs t = aux_induct x xs t
+  ==> subseqp t xs
+[@@by induction ~id:[%id aux_induct] ()
+  @>| [auto;
+       [%use subseq_right_mono t (List.tl xs) (List.hd xs)]
+       @> [%use subseq_right_mono (List.tl t) (List.tl xs) (List.hd xs)]
+       @> auto]]
+
+(* Forward: membership implies ascending *)
+lemma mem_aux_ascending x xs t =
+  List.mem t (ascending_subseqs_aux x xs)
+  && aux_induct x xs t = aux_induct x xs t
+  ==> ascendingp (x :: t)
+[@@by induction ~id:[%id aux_induct] () @>>| auto]
+
+(* Backward: ascending subsequence implies membership *)
+lemma subseq_ascending_mem_aux x xs t =
+  subseqp t xs && ascendingp (x :: t)
+  && aux_induct x xs t = aux_induct x xs t
+  ==> List.mem t (ascending_subseqs_aux x xs)
+[@@by induction ~id:[%id aux_induct] ()
+  @>>| auto]
+
+(* Clean versions without fun_induct guard *)
+lemma mem_aux_subseq_clean x xs t =
+  List.mem t (ascending_subseqs_aux x xs) ==> subseqp t xs
+[@@by [%use mem_aux_subseq x xs t] @> auto]
+
+lemma mem_aux_ascending_clean x xs t =
+  List.mem t (ascending_subseqs_aux x xs) ==> ascendingp (x :: t)
+[@@by [%use mem_aux_ascending x xs t] @> auto]
+
+lemma subseq_ascending_mem_aux_clean x xs t =
+  subseqp t xs && ascendingp (x :: t)
+  ==> List.mem t (ascending_subseqs_aux x xs)
+[@@by [%use subseq_ascending_mem_aux x xs t] @> auto]
+
+(* ============================================================
+   CHARACTERIZATION OF ASCENDING_SUBSEQS
+
+   mem s (ascending_subseqs l) iff subseqp s l && ascendingp s
+   ============================================================ *)
+
+lemma member_ascending_subseqs l s =
+  dlistp l
+  ==> (List.mem s (ascending_subseqs l) = (subseqp s l && ascendingp s))
+[@@by
+  induction ()
+  @>| [auto;
+       [%use mem_aux_subseq_clean (List.hd l) (List.tl l) (List.tl s)]
+       @> [%use mem_aux_ascending_clean (List.hd l) (List.tl l) (List.tl s)]
+       @> [%use subseq_ascending_mem_aux_clean (List.hd l) (List.tl l) (List.tl s)]
+       @> [%use subseq_right_mono s (List.tl l) (List.hd l)]
+       @> [%use subseq_tail_weak s l]
+       @> auto]]
+
+(* ============================================================
+   CHARACTERIZATION OF DESCENDING_SUBSEQS_AUX
+   ============================================================ *)
+
+let rec desc_aux_induct (x : real) (xs : real list) (t : real list) : int =
+  if xs = [] then 0
+  else
+    desc_aux_induct x (List.tl xs) t
+  + desc_aux_induct (List.hd xs) (List.tl xs) (List.tl t)
+[@@adm xs]
+
+lemma mem_desc_aux_subseq x xs t =
+  List.mem t (descending_subseqs_aux x xs)
+  && desc_aux_induct x xs t = desc_aux_induct x xs t
+  ==> subseqp t xs
+[@@by induction ~id:[%id desc_aux_induct] ()
+  @>| [auto;
+       [%use subseq_right_mono t (List.tl xs) (List.hd xs)]
+       @> [%use subseq_right_mono (List.tl t) (List.tl xs) (List.hd xs)]
+       @> auto]]
+
+lemma mem_desc_aux_descending x xs t =
+  List.mem t (descending_subseqs_aux x xs)
+  && desc_aux_induct x xs t = desc_aux_induct x xs t
+  ==> descendingp (x :: t)
+[@@by induction ~id:[%id desc_aux_induct] () @>>| auto]
+
+lemma subseq_descending_mem_desc_aux x xs t =
+  subseqp t xs && descendingp (x :: t)
+  && desc_aux_induct x xs t = desc_aux_induct x xs t
+  ==> List.mem t (descending_subseqs_aux x xs)
+[@@by induction ~id:[%id desc_aux_induct] ()
+  @>>| auto]
+
+lemma mem_desc_aux_subseq_clean x xs t =
+  List.mem t (descending_subseqs_aux x xs) ==> subseqp t xs
+[@@by [%use mem_desc_aux_subseq x xs t] @> auto]
+
+lemma mem_desc_aux_descending_clean x xs t =
+  List.mem t (descending_subseqs_aux x xs) ==> descendingp (x :: t)
+[@@by [%use mem_desc_aux_descending x xs t] @> auto]
+
+lemma subseq_descending_mem_desc_aux_clean x xs t =
+  subseqp t xs && descendingp (x :: t)
+  ==> List.mem t (descending_subseqs_aux x xs)
+[@@by [%use subseq_descending_mem_desc_aux x xs t] @> auto]
+
+lemma member_descending_subseqs l s =
+  dlistp l
+  ==> (List.mem s (descending_subseqs l) = (subseqp s l && descendingp s))
+[@@by
+  induction ()
+  @>| [auto;
+       [%use mem_desc_aux_subseq_clean (List.hd l) (List.tl l) (List.tl s)]
+       @> [%use mem_desc_aux_descending_clean (List.hd l) (List.tl l) (List.tl s)]
+       @> [%use subseq_descending_mem_desc_aux_clean (List.hd l) (List.tl l) (List.tl s)]
+       @> [%use subseq_right_mono s (List.tl l) (List.hd l)]
+       @> [%use subseq_tail_weak s l]
+       @> auto]]
+
+(* ============================================================
+   LONGEST ASCENDING/DESCENDING PROPERTIES
+   ============================================================ *)
+
+lemma longest_asc_subseq l =
+  dlistp l ==>
+  subseqp (longest_ascending_subseq l) l
+  && ascendingp (longest_ascending_subseq l)
+[@@by
+  [%use longest_mem (ascending_subseqs l)]
+  @> [%use member_ascending_subseqs l (longest (ascending_subseqs l))]
+  @> auto]
+
+lemma longest_asc_longest l s =
+  dlistp l && subseqp s l && ascendingp s
+  ==> List.length s <= List.length (longest_ascending_subseq l)
+[@@by
+  [%use longest_longest (ascending_subseqs l) s]
+  @> [%use member_ascending_subseqs l s]
+  @> auto]
+
+lemma longest_desc_subseq l =
+  dlistp l ==>
+  subseqp (longest_descending_subseq l) l
+  && descendingp (longest_descending_subseq l)
+[@@by
+  [%use longest_mem (descending_subseqs l)]
+  @> [%use member_descending_subseqs l (longest (descending_subseqs l))]
+  @> auto]
+
+lemma longest_desc_longest l s =
+  dlistp l && subseqp s l && descendingp s
+  ==> List.length s <= List.length (longest_descending_subseq l)
+[@@by
+  [%use longest_longest (descending_subseqs l) s]
+  @> [%use member_descending_subseqs l s]
+  @> auto]
+
+(* ============================================================
+   SUBSEQUENCES ENDING WITH A GIVEN ELEMENT
+   ============================================================ *)
+
+let rec last (l : real list) : real =
+  match l with
+  | [x] -> x
+  | _ :: xs -> last xs
+  | [] -> 0.0
+
+let rec lists_ending_with (x : real) (l : real list list) : real list list =
+  match l with
+  | [] -> []
+  | s :: rest ->
+    if s <> [] && last s = x then
+      s :: lists_ending_with x rest
+    else
+      lists_ending_with x rest
+
+let ascending_subseqs_ending_with (x : real) (l : real list) : real list list =
+  lists_ending_with x (ascending_subseqs l)
+
+let descending_subseqs_ending_with (x : real) (l : real list) : real list list =
+  lists_ending_with x (descending_subseqs l)
+
+(* ============================================================
+   MAX_LENS: THE INJECTION
+   ============================================================ *)
+
+let max_lens (x : real) (l : real list) : int * int =
+  (List.length (longest (ascending_subseqs_ending_with x l)),
+   List.length (longest (descending_subseqs_ending_with x l)))
+
+(* ============================================================
+   CARTESIAN PRODUCT AND COUNTING
+   ============================================================ *)
+
+let rec positives (n : int) : int list =
+  if n <= 0 then []
+  else n :: positives (n - 1)
+
+let rec pair_with (x : int) (ys : int list) : (int * int) list =
+  match ys with
+  | [] -> []
+  | y :: rest -> (x, y) :: pair_with x rest
+
+let rec cart_prod (xs : int list) (ys : int list) : (int * int) list =
+  match xs with
+  | [] -> []
+  | x :: rest -> pair_with x ys @ cart_prod rest ys
+
+lemma len_cart_prod xs ys =
+  List.length (cart_prod xs ys) = List.length xs * List.length ys
+[@@by auto]
+
+lemma len_positives n =
+  n >= 0 ==> List.length (positives n) = n
+[@@by auto]
+
+(* ============================================================
+   INDEX: position of an element in a list
+   ============================================================ *)
+
+let rec index (x : real) (l : real list) : int =
+  match l with
+  | [] -> 0
+  | y :: ys -> if x = y then 0 else 1 + index x ys
+
+lemma index_mem x l =
+  List.mem x l ==> index x l < List.length l
+[@@by auto]
+
+lemma index_nonneg (x : real) l = index x l >= 0
+[@@by auto]
+
+lemma index_distinct x y l =
+  dlistp l && List.mem x l && List.mem y l && x <> y
+  ==> index x l <> index y l
+[@@by induction ()
+  @>>| ([%use index_nonneg x (List.tl l)]
+        @> [%use index_nonneg y (List.tl l)]
+        @> auto)]
+
+(* ============================================================
+   LISTS_ENDING_WITH CHARACTERIZATION
+   ============================================================ *)
+
+lemma mem_lists_ending_with x l s =
+  List.mem s (lists_ending_with x l)
+  = (List.mem s l && s <> [] && last s = x)
+[@@by auto][@@rw]
+
+(* ============================================================
+   LAST AND ASCENDING/DESCENDING
+   ============================================================ *)
+
+lemma ascending_last_gt l x =
+  l <> [] && ascendingp (l @ [x]) ==> last l <. x
+[@@by auto]
+
+lemma descending_last_lt l x =
+  l <> [] && descendingp (l @ [x]) ==> last l >. x
+[@@by auto]
+
+lemma ascending_extend l x =
+  ascendingp l && (l = [] || last l <. x) ==> ascendingp (l @ [x])
+[@@by auto]
+
+lemma descending_extend l x =
+  descendingp l && (l = [] || last l >. x) ==> descendingp (l @ [x])
+[@@by auto]
+
+lemma last_append l x =
+  last (l @ [x]) = x
+[@@by auto]
+
+lemma last_snoc l =
+  l <> [] ==> last l = List.hd (List.rev l)
+[@@by auto]
+
+(* ============================================================
+   SUBSEQ APPEND: if subseqp s l and y appears after s in l,
+   then subseqp (s @ [y]) l
+   ============================================================ *)
+
+(* Subsequence of prefix is subsequence of whole *)
+lemma subseq_prefix (s : real list) l1 l2 =
+  subseqp s l1 ==> subseqp s (l1 @ l2)
+[@@by auto]
+
+(* For the final theorem, we use a counting argument:
+
+   Define max_lens x l = (asc_len, desc_len).
+   If x < y and x before y, then asc_len(y) > asc_len(x).
+   If x > y and x before y, then desc_len(y) > desc_len(x).
+   So max_lens is injective.
+
+   We prove this by showing that if we have an ascending subseq
+   ending at x, we can extend it with y to get one ending at y. *)
+
+(* ============================================================
+   THE ERDOS-SZEKERES THEOREM
+
+   Assign to each element x of l the pair (a_x, d_x) where
+   a_x = length of longest ascending subseq ending at x
+   d_x = length of longest descending subseq ending at x
+
+   If two elements x, y have the same pair and x appears
+   before y, then x < y implies a_y > a_x (contradiction)
+   and x > y implies d_y > d_x (contradiction).
+
+   So the pairs are all distinct. Each a_x ≤ a, d_x ≤ b
+   (where a, b are the lengths of the overall longest).
+   So len(l) ≤ a * b.
+
+   If len(l) > (a-1)(b-1), then a ≥ some threshold or
+   b ≥ some threshold.
+
+   We formalize this as:
+
+   If len l > r * s, then either the longest ascending subseq
+   has length > r or the longest descending has length > s. *)
+
+(* ============================================================
+   ASSIGN ASCENDING LENGTHS
+
+   For each element, compute the length of the longest
+   ascending subsequence ending at that element.
+   ============================================================ *)
+
+(* Compute a_x for each element of l *)
+let asc_len_at (x : real) (l : real list) : int =
+  List.length (longest (ascending_subseqs_ending_with x l))
+
+let desc_len_at (x : real) (l : real list) : int =
+  List.length (longest (descending_subseqs_ending_with x l))
+
+(* Map each element to its (asc_len, desc_len) pair *)
+let rec pair_map (l : real list) (full : real list) : (int * int) list =
+  match l with
+  | [] -> []
+  | x :: xs -> (asc_len_at x full, desc_len_at x full) :: pair_map xs full
+
+(* ============================================================
+   PIGEONHOLE ARGUMENT
+
+   We need: if pair_map produces all-distinct pairs in
+   {1,...,a} x {1,...,b}, then len(l) <= a*b.
+   ============================================================ *)
+
+(* ============================================================
+   EXTENSION LEMMA
+
+   If s is ascending, ends at x, is a subseq of l,
+   and y appears in l after all elements of s, with x < y,
+   then s @ [y] is ascending, ends at y, is a subseq of l.
+   ============================================================ *)
+
+(* If s ascending ending at x, x < y, then s@[y] ascending *)
+lemma ascending_snoc s y =
+  ascendingp s && (s = [] || last s <. y)
+  ==> ascendingp (s @ [y])
+[@@by auto]
+
+lemma descending_snoc s y =
+  descendingp s && (s = [] || last s >. y)
+  ==> descendingp (s @ [y])
+[@@by auto]
+
+(* ============================================================
+   INJECTIVITY OF MAX_LENS
+
+   For distinct x, y in a dlist l:
+   - if x before y and x < y: asc_len_at y > asc_len_at x
+   - if x before y and x > y: desc_len_at y > desc_len_at x
+   So (asc_len_at x, desc_len_at x) <> (asc_len_at y, desc_len_at y)
+   ============================================================ *)
+
+(* ============================================================
+   GENERAL PIGEONHOLE PRINCIPLE
+
+   If xs is distinct and every element of xs is in ys,
+   then len xs <= len ys.
+   ============================================================ *)
+
+(* Remove decreases length when element is present *)
+let rec remove_p (x : int * int) (l : (int * int) list) : (int * int) list =
+  match l with
+  | [] -> []
+  | y :: rest -> if x = y then rest else y :: remove_p x rest
+
+lemma remove_p_length x l =
+  List.mem x l ==> List.length (remove_p x l) < List.length l
+[@@by auto]
+
+lemma mem_remove_p_neq (x : int * int) y l =
+  List.mem x l && x <> y ==> List.mem x (remove_p y l)
+[@@by auto]
+
+(* Distinct list of pairs *)
+let rec dlistp_pair (l : (int * int) list) : bool =
+  match l with
+  | [] -> true
+  | x :: xs -> not (List.mem x xs) && dlistp_pair xs
+
+(* All elements of xs are in ys *)
+let rec all_in (xs : (int * int) list) (ys : (int * int) list) : bool =
+  match xs with
+  | [] -> true
+  | x :: rest -> List.mem x ys && all_in rest ys
+
+lemma all_in_remove (xs : (int * int) list) x ys =
+  all_in xs ys && dlistp_pair (x :: xs)
+  ==> all_in xs (remove_p x ys)
+[@@by
+  induction ()
+  @>| [auto;
+       [%use mem_remove_p_neq (List.hd xs) x ys]
+       @> auto]]
+
+(* Pigeonhole: distinct subset is no larger than the superset *)
+let rec ph_ind (xs : (int * int) list) (ys : (int * int) list) : int =
+  match xs with
+  | [] -> 0
+  | _ :: t -> ph_ind t (remove_p (List.hd xs) ys)
+[@@adm xs]
+
+lemma pigeonhole_h xs ys =
+  dlistp_pair xs && all_in xs ys
+  && ph_ind xs ys = ph_ind xs ys
+  ==> List.length xs <= List.length ys
+[@@by induction ~id:[%id ph_ind] ()
+  @>| [auto;
+       [%use remove_p_length (List.hd xs) ys]
+       @> [%use all_in_remove (List.tl xs) (List.hd xs) ys]
+       @> auto]]
+
+lemma pigeonhole xs ys =
+  dlistp_pair xs && all_in xs ys
+  ==> List.length xs <= List.length ys
+[@@by [%use pigeonhole_h xs ys] @> auto]
+
+(* ============================================================
+   PAIR MAP PROPERTIES
+   ============================================================ *)
+
+lemma pair_map_length l full =
+  List.length (pair_map l full) = List.length l
+[@@by auto] [@@disable asc_len_at, desc_len_at]
+
+(* ============================================================
+   CARTESIAN PRODUCT MEMBERSHIP
+   ============================================================ *)
+
+lemma mem_positives x n =
+  n >= 0 ==> (List.mem x (positives n) = (1 <= x && x <= n))
+[@@by auto][@@rw]
+
+lemma mem_pair_with x y ys =
+  List.mem (x, y) (pair_with x ys) = List.mem y ys
+[@@by auto][@@rw]
+
+lemma not_mem_pair_with x y a ys =
+  x <> a ==> not (List.mem (x, y) (pair_with a ys))
+[@@by auto]
+
+lemma mem_cart_prod x y xs ys =
+  List.mem (x, y) (cart_prod xs ys)
+  = (List.mem x xs && List.mem y ys)
+[@@by
+  induction ()
+  @>| [crush;
+       [%use mem_append (x, y)
+            (pair_with (List.hd xs) ys)
+            (cart_prod (List.tl xs) ys)]
+       @> [%use mem_pair_with (List.hd xs) y ys]
+       @> [%use not_mem_pair_with x y (List.hd xs) ys]
+       @> crush]][@@rw]
+
+(* ============================================================
+   THE BOUND: len(l) <= longest_asc * longest_desc
+
+   Proof outline:
+   1. pair_map l l gives distinct pairs (injectivity of max_lens)
+   2. Each pair is in positives(A) x positives(D)
+   3. By pigeonhole, len(pair_map) <= len(cart_prod) = A*D
+   4. len(pair_map) = len(l), so len(l) <= A*D
+   ============================================================ *)
+
+(* ============================================================
+   SUBSEQUENCE EXTENSION
+
+   If s is a subseq of l ending at x, and y appears after x
+   in l (index x < index y), then s @ [y] is a subseq of l.
+   ============================================================ *)
+
+(* Split l at position of x: everything after x *)
+let rec after (x : real) (l : real list) : real list =
+  match l with
+  | [] -> []
+  | h :: t -> if h = x then t else after x t
+
+lemma mem_after x y l =
+  dlistp l && List.mem x l && List.mem y l && index x l < index y l
+  ==> List.mem y (after x l)
+[@@by auto]
+
+(* If s is subseq of l, then after consuming s in l,
+   the remainder contains everything after last(s) *)
+(* Badguy checker: walks s against l, then checks y in remainder *)
+let rec snoc_check (s : real list) (y : real) (l : real list) : bool =
+  match s, l with
+  | [], _ -> List.mem y l
+  | _, [] -> false
+  | h :: t, lh :: lt ->
+    if h = lh then snoc_check t y lt
+    else snoc_check s y lt
+[@@adm l]
+
+(* snoc_check = subseqp (s @ [y]) *)
+lemma snoc_check_eq s y l =
+  snoc_check s y l = subseqp (s @ [y]) l
+[@@by auto]
+
+(* snoc_check holds under our conditions *)
+let rec snoc_ind (s : real list) (l : real list) : int =
+  match s, l with
+  | [], _ -> 0
+  | _, [] -> 0
+  | h :: _, lh :: lt ->
+    if h = lh then snoc_ind (List.tl s) lt
+    else snoc_ind s lt
+[@@adm l]
+
+(* Index shift: if x ≠ hd l, index in l = 1 + index in tl *)
+lemma index_tl x h l =
+  x <> h ==> index x (h :: l) = 1 + index x l
+[@@by auto]
+
+(* If subseqp s l and hd s ≠ hd(h::l), then subseqp s l *)
+lemma subseq_skip_head s h l =
+  subseqp s (h :: l) && (s = [] || List.hd s <> h)
+  ==> subseqp s l
+[@@by auto]
+
+(* Members of a subsequence are members of the list *)
+lemma subseq_mem_last s l =
+  s <> [] && subseqp s l ==> List.mem (last s) l
+[@@by auto]
+
+(* If index x l = 0 and x ∈ l, then x = hd l *)
+lemma index_zero_is_hd (x : real) l =
+  List.mem x l && index x l = 0 ==> x = List.hd l
+[@@by induction ()
+  @>>| ([%use index_nonneg x (List.tl l)] @> auto)]
+
+(* If 0 < index y l, then y ≠ hd l and y ∈ tl l *)
+lemma index_pos_in_tl (y : real) l =
+  l <> [] && List.mem y l && index y l > 0
+  ==> y <> List.hd l && List.mem y (List.tl l)
+[@@by auto]
+
+(* last s = last (tl s) when tl s ≠ [] *)
+lemma last_tl (s : real list) =
+  s <> [] && List.tl s <> [] ==> last s = last (List.tl s)
+[@@by auto]
+
+(* Elements of subseq of tl are not hd (by dlistp) *)
+lemma subseq_tl_not_hd (s : real list) l =
+  s <> [] && subseqp s (List.tl l) && dlistp l && l <> []
+  ==> last s <> List.hd l
+[@@by
+  [%use subseq_mem_last s (List.tl l)]
+  @> auto]
+
+(* Index shift for elements in tl *)
+lemma index_shift (x : real) l =
+  l <> [] && x <> List.hd l
+  ==> index x l = 1 + index x (List.tl l)
+[@@by auto]
+
+lemma snoc_check_holds_h s y l =
+  subseqp s l && dlistp l
+  && List.mem y l
+  && (s = [] || index (last s) l < index y l)
+  && snoc_ind s l = snoc_ind s l
+  ==> snoc_check s y l
+[@@by induction ~id:[%id snoc_ind] ()
+  @>| [auto;
+       (* Step: h = lh *)
+       [%use subseq_skip_head s (List.hd l) (List.tl l)]
+       @> [%use index_nonneg (last s) l]
+       @> [%use index_pos_in_tl y l]
+       @> [%use subseq_tl_not_hd s l]
+       @> [%use subseq_tl_not_hd (List.tl s) l]
+       @> [%use last_tl s]
+       @> [%use index_shift (last s) l]
+       @> [%use index_shift y l]
+       @> simplify ()
+       @>>| auto;
+       (* Step: h <> lh *)
+       [%use subseq_skip_head s (List.hd l) (List.tl l)]
+       @> [%use index_nonneg (last s) l]
+       @> [%use index_pos_in_tl y l]
+       @> [%use subseq_tl_not_hd s l]
+       @> [%use subseq_tl_not_hd (List.tl s) l]
+       @> [%use last_tl s]
+       @> [%use index_shift (last s) l]
+       @> [%use index_shift y l]
+       @> simplify ()
+       @>>| auto]]
+[@@disable snoc_ind, subseqp]
+[@@disable snoc_ind]
+
+lemma snoc_check_holds s y l =
+  subseqp s l && dlistp l
+  && List.mem y l
+  && (s = [] || index (last s) l < index y l)
+  ==> snoc_check s y l
+[@@by [%use snoc_check_holds_h s y l] @> auto]
+
+(* Combine: subseqp (s @ [y]) l *)
+lemma subseq_after_last s l y =
+  subseqp s l && dlistp l
+  && List.mem y l
+  && (s = [] || index (last s) l < index y l)
+  ==> subseqp (s @ [y]) l
+[@@by
+  [%use snoc_check_eq s y l]
+  @> [%use snoc_check_holds s y l]
+  @> auto]
+
+(* ============================================================
+   SINGLETON EVALUATION HELPERS
+   ============================================================ *)
+
+lemma last_singleton (x : real) = last [x] = x
+[@@by auto][@@rw]
+
+lemma append_singleton_nonempty (s : real list) y = s @ [y] <> []
+[@@by auto][@@rw]
+
+lemma lists_ending_with_nonempty x l s =
+  List.mem s l && s <> [] && last s = x
+  ==> lists_ending_with x l <> []
+[@@by auto]
+
+(* ============================================================
+   CHARACTERIZATION OF ENDING-WITH LISTS
+   ============================================================ *)
+
+lemma mem_asc_ending_char x l s =
+  dlistp l ==>
+  (List.mem s (ascending_subseqs_ending_with x l)
+   = (subseqp s l && ascendingp s && s <> [] && last s = x))
+[@@by
+  [%use mem_lists_ending_with x (ascending_subseqs l) s]
+  @> [%use member_ascending_subseqs l s]
+  @> auto]
+
+lemma mem_desc_ending_char x l s =
+  dlistp l ==>
+  (List.mem s (descending_subseqs_ending_with x l)
+   = (subseqp s l && descendingp s && s <> [] && last s = x))
+[@@by
+  [%use mem_lists_ending_with x (descending_subseqs l) s]
+  @> [%use member_descending_subseqs l s]
+  @> auto]
+
+(* [x] is a subsequence of l when x ∈ l *)
+lemma singleton_subseq (x : real) l =
+  List.mem x l ==> subseqp [x] l
+[@@by auto]
+
+(* ascending/descending subseqs ending at x is non-empty when x ∈ l *)
+lemma asc_ending_nonempty x l =
+  dlistp l && List.mem x l
+  ==> ascending_subseqs_ending_with x l <> []
+[@@by
+  [%use member_ascending_subseqs l [x]]
+  @> [%use singleton_subseq x l]
+  @> [%use lists_ending_with_nonempty x (ascending_subseqs l) [x]]
+  @> auto]
+
+lemma desc_ending_nonempty x l =
+  dlistp l && List.mem x l
+  ==> descending_subseqs_ending_with x l <> []
+[@@by
+  [%use member_descending_subseqs l [x]]
+  @> [%use singleton_subseq x l]
+  @> [%use lists_ending_with_nonempty x (descending_subseqs l) [x]]
+  @> auto]
+
+(* Extending an ascending subseq ending at x with y *)
+lemma extend_gives_asc_ending s x y l =
+  dlistp l && List.mem x l && List.mem y l
+  && List.mem s (ascending_subseqs_ending_with x l)
+  && index x l < index y l && x <. y
+  ==> List.mem (s @ [y]) (ascending_subseqs_ending_with y l)
+[@@by
+  intros
+  @> [%use mem_asc_ending_char x l s]
+  @> [%use mem_asc_ending_char y l (s @ [y])]
+  @> [%use ascending_snoc s y]
+  @> [%use subseq_after_last s l y]
+  @> [%use last_append s y]
+  @> [%use append_singleton_nonempty s y]
+  @> simplify ()
+  @> auto]
+[@@disable ascending_subseqs_ending_with, ascending_subseqs, ascending_subseqs_aux, lists_ending_with]
+
+lemma extend_gives_desc_ending s x y l =
+  dlistp l && List.mem x l && List.mem y l
+  && List.mem s (descending_subseqs_ending_with x l)
+  && index x l < index y l && x >. y
+  ==> List.mem (s @ [y]) (descending_subseqs_ending_with y l)
+[@@by
+  intros
+  @> [%use mem_desc_ending_char x l s]
+  @> [%use mem_desc_ending_char y l (s @ [y])]
+  @> [%use descending_snoc s y]
+  @> [%use subseq_after_last s l y]
+  @> [%use last_append s y]
+  @> [%use append_singleton_nonempty s y]
+  @> simplify ()
+  @> auto]
+[@@disable descending_subseqs_ending_with, descending_subseqs, descending_subseqs_aux, lists_ending_with]
+
+(* Length of s @ [y] *)
+lemma len_append x y =
+  List.length (x @ y) = List.length x + List.length y
+[@@by auto] [@@rw] [@@fc]
+
+(* ============================================================
+   ASCENDING LENGTH STRICTLY INCREASES
+
+   If x < y and x before y in l, then asc_len_at y > asc_len_at x
+   ============================================================ *)
+
+lemma asc_len_increases x y l =
+  dlistp l && List.mem x l && List.mem y l
+  && index x l < index y l && x <. y
+  ==> asc_len_at y l > asc_len_at x l
+[@@by
+  [%use asc_ending_nonempty x l]
+  @> [%use longest_mem (ascending_subseqs_ending_with x l)]
+  @> [%use extend_gives_asc_ending
+       (longest (ascending_subseqs_ending_with x l)) x y l]
+  @> [%use longest_longest (ascending_subseqs_ending_with y l)
+       (longest (ascending_subseqs_ending_with x l) @ [y])]
+  @> auto]
+[@@disable ascending_subseqs_ending_with, ascending_subseqs, ascending_subseqs_aux, lists_ending_with]
+
+lemma desc_len_increases x y l =
+  dlistp l && List.mem x l && List.mem y l
+  && index x l < index y l && x >. y
+  ==> desc_len_at y l > desc_len_at x l
+[@@by
+  [%use desc_ending_nonempty x l]
+  @> [%use longest_mem (descending_subseqs_ending_with x l)]
+  @> [%use extend_gives_desc_ending
+       (longest (descending_subseqs_ending_with x l)) x y l]
+  @> [%use longest_longest (descending_subseqs_ending_with y l)
+       (longest (descending_subseqs_ending_with x l) @ [y])]  
+  @> auto]
+[@@disable descending_subseqs_ending_with, descending_subseqs, descending_subseqs_aux, lists_ending_with]
+
+(* ============================================================
+   INJECTIVITY OF MAX_LENS
+
+   For distinct x, y in dlist l:
+   max_lens x l <> max_lens y l
+   ============================================================ *)
+
+(* Helper: pair inequality from component inequality *)
+lemma pair_neq_of_fst (a : int) b c d =
+  a <> c ==> (a, b) <> (c, d)
+[@@by auto]
+
+lemma pair_neq_of_snd (a : int) b c d =
+  b <> d ==> (a, b) <> (c, d)
+[@@by auto]
+
+(* max_lens differs if asc or desc component differs *)
+lemma max_lens_neq_of_asc x y l =
+  asc_len_at x l <> asc_len_at y l
+  ==> max_lens x l <> max_lens y l
+[@@by
+  [%use pair_neq_of_fst
+    (asc_len_at x l) (desc_len_at x l)
+    (asc_len_at y l) (desc_len_at y l)]
+  @> crush]
+
+lemma max_lens_neq_of_desc x y l =
+  desc_len_at x l <> desc_len_at y l
+  ==> max_lens x l <> max_lens y l
+[@@by
+  [%use pair_neq_of_snd
+    (asc_len_at x l) (desc_len_at x l)
+    (asc_len_at y l) (desc_len_at y l)]
+  @> crush]
+
+lemma max_lens_injective x y l =
+  dlistp l && List.mem x l && List.mem y l && x <> y
+  ==> max_lens x l <> max_lens y l
+[@@by
+  intros
+  @> [%use index_distinct x y l]
+  @> [%cases index x l < index y l]
+  @>| [[%cases x <. y]
+       @>| [(* x < y, idx x < idx y: asc y > asc x *)
+            [%use asc_len_increases x y l]
+            @> [%subgoal asc_len_at x l <> asc_len_at y l]
+            @>| [[%use max_lens_neq_of_asc x y l] @> unroll 1;
+                 crush];
+            (* x > y, idx x < idx y: desc y > desc x *)
+            [%use desc_len_increases x y l]
+            @> [%subgoal desc_len_at x l <> desc_len_at y l]
+            @>| [[%use max_lens_neq_of_desc x y l] @> unroll 1;
+                 crush]];
+       (* idx y < idx x *)
+       [%subgoal index y l < index x l]
+       @>| [[%cases y <. x]
+            @>| [(* y < x, idx y < idx x: asc x > asc y *)
+                 [%use asc_len_increases y x l]
+                 @> [%subgoal asc_len_at x l <> asc_len_at y l]
+                 @>| [[%use max_lens_neq_of_asc x y l] @> unroll 1;
+                      crush];
+                 (* y > x, idx y < idx x: desc x > desc y *)
+                 [%use desc_len_increases y x l]
+                 @> [%subgoal desc_len_at x l <> desc_len_at y l]
+                 @>| [[%use max_lens_neq_of_desc x y l] @> unroll 1;
+                      crush]];
+            auto]]]
+
+(* ============================================================
+   PAIR MAP IS DISTINCT (from injectivity)
+   ============================================================ *)
+
+(* All elements of l are members of full *)
+let rec all_mem_of (l : real list) (full : real list) : bool =
+  match l with
+  | [] -> true
+  | x :: xs -> List.mem x full && all_mem_of xs full
+
+lemma all_mem_of_cons l m x =
+  all_mem_of l m ==> all_mem_of l (x :: m)
+[@@by auto]
+
+lemma all_mem_of_self l = all_mem_of l l
+[@@by induction ()
+  @>| [auto;
+       [%use all_mem_of_cons (List.tl l) (List.tl l) (List.hd l)]
+       @> auto]]
+
+lemma all_mem_of_tl l full =
+  all_mem_of l full && l <> []
+  ==> all_mem_of (List.tl l) full
+[@@by auto]
+
+lemma all_mem_of_hd l full =
+  all_mem_of l full && l <> []
+  ==> List.mem (List.hd l) full
+[@@by auto]
+
+(* Helper: not in cons if not head and not in tail *)
+lemma not_mem_cons (p : int * int) q qs =
+  p <> q && not (List.mem p qs)
+  ==> not (List.mem p (q :: qs))
+[@@by auto]
+
+(* max_lens_injective in expanded pair form *)
+lemma pair_map_entry_injective x y full =
+  dlistp full && List.mem x full && List.mem y full && x <> y
+  ==> (asc_len_at x full, desc_len_at x full)
+      <> (asc_len_at y full, desc_len_at y full)
+[@@by [%use max_lens_injective x y full] @> unroll 1]
+
+(* If x not in xs and max_lens is injective, then max_lens x not in pair_map xs *)
+lemma not_mem_pair_map x xs full =
+  dlistp full && not (List.mem x xs)
+  && List.mem x full && all_mem_of xs full
+  ==> not (List.mem (asc_len_at x full, desc_len_at x full) (pair_map xs full))
+[@@by
+  induction ()
+  @>| [auto;
+       [%use pair_map_entry_injective x (List.hd xs) full]
+       @> [%use all_mem_of_hd xs full]
+       @> [%use all_mem_of_tl xs full]
+       @> unroll 10]]
+
+lemma pair_map_distinct_gen l full =
+  dlistp l && dlistp full && all_mem_of l full
+  ==> dlistp_pair (pair_map l full)
+[@@by
+  induction ()
+  @>| [auto;
+       [%use not_mem_pair_map (List.hd l) (List.tl l) full]
+       @> [%use all_mem_of_tl l full]
+       @> auto]]
+
+lemma pair_map_distinct l =
+  dlistp l
+  ==> dlistp_pair (pair_map l l)
+[@@by
+  [%use pair_map_distinct_gen l l]
+  @> [%use all_mem_of_self l]
+  @> auto]
+
+(* ============================================================
+   EACH PAIR IN RANGE
+   ============================================================ *)
+
+(* Non-empty list has length >= 1 *)
+lemma len_pos_of_nonempty (s : real list) =
+  s <> [] ==> List.length s >= 1
+[@@by auto]
+
+(* lists_ending_with is a subset of the original *)
+lemma lists_ending_with_sub x l s =
+  List.mem s (lists_ending_with x l) ==> List.mem s l
+[@@by auto]
+
+lemma asc_len_at_pos x l =
+  dlistp l && List.mem x l ==> asc_len_at x l >= 1
+[@@by
+  [%use asc_ending_nonempty x l]
+  @> [%use longest_mem (ascending_subseqs_ending_with x l)]
+  @> [%use mem_asc_ending_char x l
+       (longest (ascending_subseqs_ending_with x l))]
+  @> [%use len_pos_of_nonempty
+       (longest (ascending_subseqs_ending_with x l))]
+  @> unroll 1]
+
+lemma desc_len_at_pos x l =
+  dlistp l && List.mem x l ==> desc_len_at x l >= 1
+[@@by
+  [%use desc_ending_nonempty x l]
+  @> [%use longest_mem (descending_subseqs_ending_with x l)]
+  @> [%use mem_desc_ending_char x l
+       (longest (descending_subseqs_ending_with x l))]
+  @> [%use len_pos_of_nonempty
+       (longest (descending_subseqs_ending_with x l))]
+  @> unroll 1]
+
+lemma asc_len_at_bounded x l =
+  dlistp l && List.mem x l
+  ==> asc_len_at x l <= List.length (longest_ascending_subseq l)
+[@@by
+  [%use asc_ending_nonempty x l]
+  @> [%use longest_mem (ascending_subseqs_ending_with x l)]
+  @> [%use lists_ending_with_sub x (ascending_subseqs l)
+       (longest (ascending_subseqs_ending_with x l))]
+  @> [%use longest_longest (ascending_subseqs l)
+       (longest (ascending_subseqs_ending_with x l))]
+  @> unroll 10]
+
+lemma desc_len_at_bounded x l =
+  dlistp l && List.mem x l
+  ==> desc_len_at x l <= List.length (longest_descending_subseq l)
+[@@by
+  [%use desc_ending_nonempty x l]
+  @> [%use longest_mem (descending_subseqs_ending_with x l)]
+  @> [%use lists_ending_with_sub x (descending_subseqs l)
+       (longest (descending_subseqs_ending_with x l))]
+  @> [%use longest_longest (descending_subseqs l)
+       (longest (descending_subseqs_ending_with x l))]
+  @> unroll 10]
+
+lemma pair_in_range x l =
+  dlistp l && List.mem x l
+  ==> List.mem (asc_len_at x l, desc_len_at x l)
+       (cart_prod
+         (positives (List.length (longest_ascending_subseq l)))
+         (positives (List.length (longest_descending_subseq l))))
+[@@by
+  [%use asc_len_at_pos x l]
+  @> [%use asc_len_at_bounded x l]
+  @> [%use desc_len_at_pos x l]
+  @> [%use desc_len_at_bounded x l]
+  @> [%use mem_cart_prod (asc_len_at x l) (desc_len_at x l)
+       (positives (List.length (longest_ascending_subseq l)))
+       (positives (List.length (longest_descending_subseq l)))]
+  @> [%use mem_positives (asc_len_at x l)
+       (List.length (longest_ascending_subseq l))]
+  @> [%use mem_positives (desc_len_at x l)
+       (List.length (longest_descending_subseq l))]
+  @> [%use List.len_nonnegative (longest_ascending_subseq l)]
+  @> [%use List.len_nonnegative (longest_descending_subseq l)]
+  @> unroll 1]
+
+lemma pair_map_in_range_gen l full =
+  dlistp full && all_mem_of l full
+  ==> all_in (pair_map l full)
+       (cart_prod
+         (positives (List.length (longest_ascending_subseq full)))
+         (positives (List.length (longest_descending_subseq full))))
+[@@by
+  induction ()
+  @>| [unroll 10;
+       [%use pair_in_range (List.hd l) full]
+       @> [%use all_mem_of_hd l full]
+       @> [%use all_mem_of_tl l full]
+       @> unroll 10]]
+
+lemma pair_map_in_range l =
+  dlistp l
+  ==> all_in (pair_map l l)
+       (cart_prod
+         (positives (List.length (longest_ascending_subseq l)))
+         (positives (List.length (longest_descending_subseq l))))
+[@@by
+  [%use pair_map_in_range_gen l l]
+  @> [%use all_mem_of_self l]
+  @> auto]
+
+(* ============================================================
+   THE BOUND
+   ============================================================ *)
+
+lemma erdos_szekeres_bound l =
+  dlistp l
+  ==> List.length l
+      <= List.length (longest_ascending_subseq l)
+         * List.length (longest_descending_subseq l)
+[@@by
+  intros
+  @> [%use pigeonhole (pair_map l l)
+       (cart_prod
+         (positives (List.length (longest_ascending_subseq l)))
+         (positives (List.length (longest_descending_subseq l))))]
+  @> [%use pair_map_distinct l]
+  @> [%use pair_map_in_range l]
+  @> [%use pair_map_length l l]
+  @> [%use len_cart_prod
+       (positives (List.length (longest_ascending_subseq l)))
+       (positives (List.length (longest_descending_subseq l)))]
+  @> [%use len_positives (List.length (longest_ascending_subseq l))]
+  @> [%use len_positives (List.length (longest_descending_subseq l))]
+  @> [%use List.len_nonnegative (longest_ascending_subseq l)]
+  @> [%use List.len_nonnegative (longest_descending_subseq l)]
+  @> unroll 1]
+
+(* Arithmetic: n <= a*d && n > r*s && r>=0 && s>=0 ==> a>r || d>s *)
+(* Contrapositive: a <= r && d <= s ==> a*d <= r*s *)
+lemma prod_mono a d r s =
+  0 <= a && a <= r && 0 <= d && d <= s
+  ==> a * d <= r * s
+[@@by nonlin ()]
+
+lemma es_arith n a d r s =
+  n <= a * d && n > r * s && r >= 0 && s >= 0 && a >= 0 && d >= 0
+  ==> a > r || d > s
+[@@by [%use prod_mono a d r s] @> auto]
+
+(* Finally, our main theorem!
+
+   Erdos-Szekeres:
+
+   If l is a list of distinct rationals of length > (a-1)(b-1),
+   then l has an ascending subsequence of length >= a
+   or a descending subsequence of length >= b.
+
+ *)
+
+theorem erdos_szekeres l r s =
+  dlistp l
+  && List.length l > r * s
+  && r >= 0 && s >= 0
+  ==> List.length (longest_ascending_subseq l) > r
+      || List.length (longest_descending_subseq l) > s
+[@@by
+  [%use erdos_szekeres_bound l]
+  @> [%use es_arith (List.length l)
+       (List.length (longest_ascending_subseq l))
+       (List.length (longest_descending_subseq l)) r s]
+  @> [%use List.len_nonnegative (longest_ascending_subseq l)]
+  @> [%use List.len_nonnegative (longest_descending_subseq l)]
+  @> crush]
