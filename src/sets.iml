@@ -1,0 +1,684 @@
+(* Finite sets as distinct lists (dlistp) — a small reusable library
+   for set-theoretic reasoning on top of Imandra lists.
+
+   Elements are compared with normal structural equality. A `set' is a
+   list with no duplicates (dlistp). Membership is List.mem. Subset is
+   `sublistp`. Union and intersection preserve dlistp of their first
+   argument.
+
+   Grant Passmore, Imandra
+ *)
+
+(* ============================================================
+   CORE DEFINITIONS
+   ============================================================ *)
+
+(* Distinct list (no duplicates) *)
+let rec dlistp (l : 'a list) : bool =
+  match l with
+  | [] -> true
+  | x :: xs -> not (List.mem x xs) && dlistp xs
+
+(* Set union *)
+let rec set_union (s1 : 'a list) (s2 : 'a list) : 'a list =
+  match s1 with
+  | [] -> s2
+  | x :: xs ->
+    if List.mem x s2 then set_union xs s2
+    else x :: set_union xs s2
+
+(* Set intersection *)
+let rec set_intersect (s1 : 'a list) (s2 : 'a list) : 'a list =
+  match s1 with
+  | [] -> []
+  | x :: xs ->
+    if List.mem x s2 then x :: set_intersect xs s2
+    else set_intersect xs s2
+
+(* Sublist: every element of s is in l *)
+let rec sublistp (s : 'a list) (l : 'a list) : bool =
+  match s with
+  | [] -> true
+  | x :: xs -> List.mem x l && sublistp xs l
+
+(* Remove first occurrence of x *)
+let rec remove (x : 'a) (l : 'a list) : 'a list =
+  match l with
+  | [] -> []
+  | y :: ys -> if x = y then ys else y :: remove x ys
+
+(* Count how many elements of u are in s *)
+let rec num_members (u : 'a list) (s : 'a list) : int =
+  match u with
+  | [] -> 0
+  | x :: rest ->
+    (if List.mem x s then 1 else 0) + num_members rest s
+
+(* All elements of ll are sublists of u *)
+let rec all_sublistp (ll : 'a list list) (u : 'a list) : bool =
+  match ll with
+  | [] -> true
+  | s :: rest -> sublistp s u && all_sublistp rest u
+
+(* All elements of ll are dlists *)
+let rec all_dlistp (ll : 'a list list) : bool =
+  match ll with
+  | [] -> true
+  | s :: rest -> dlistp s && all_dlistp rest
+
+(* ============================================================
+   BASIC MEMBERSHIP LEMMAS
+   ============================================================ *)
+
+lemma mem_append (x : 'a) (y : 'a list) (z : 'a list) =
+  List.mem x (y @ z) = (List.mem x y || List.mem x z)
+[@@by auto][@@rw]
+
+lemma mem_set_union x s1 s2 =
+  List.mem x (set_union s1 s2) = (List.mem x s1 || List.mem x s2)
+[@@by auto][@@rw]
+
+lemma mem_set_intersect x s1 s2 =
+  List.mem x (set_intersect s1 s2) = (List.mem x s1 && List.mem x s2)
+[@@by auto][@@rw]
+
+(* ============================================================
+   SUBLISTP LEMMAS
+   ============================================================ *)
+
+lemma sublistp_cons_super s l x =
+  sublistp s l ==> sublistp s (x :: l)
+[@@by auto]
+
+lemma sublistp_refl (l : 'a list) = sublistp l l
+[@@by induction ()
+  @>| [auto;
+       [%use sublistp_cons_super (List.tl l) (List.tl l) (List.hd l)]
+       @> auto]][@@rw]
+
+lemma sublistp_nil (l : 'a list) = sublistp [] l
+[@@by auto][@@rw]
+
+lemma sublistp_cons x xs l =
+  sublistp (x :: xs) l = (List.mem x l && sublistp xs l)
+[@@by auto][@@rw]
+
+(* ============================================================
+   DLISTP / SUBLISTP PRESERVATION
+   ============================================================ *)
+
+lemma dlistp_set_intersect s1 s2 =
+  dlistp s1 ==> dlistp (set_intersect s1 s2)
+[@@by auto]
+
+lemma dlistp_set_union s1 s2 =
+  dlistp s1 && dlistp s2 ==> dlistp (set_union s1 s2)
+[@@by auto]
+
+lemma sublistp_set_union s1 s2 u =
+  sublistp s1 u && sublistp s2 u ==> sublistp (set_union s1 s2) u
+[@@by auto]
+
+lemma sublistp_set_intersect_left s1 s2 u =
+  sublistp s1 u ==> sublistp (set_intersect s1 s2) u
+[@@by induction ~id:[%id set_intersect] () @>>| auto]
+
+(* ============================================================
+   REMOVE LEMMAS
+   ============================================================ *)
+
+lemma mem_remove x y l =
+  x <> y ==> (List.mem x (remove y l) = List.mem x l)
+[@@by auto][@@rw]
+
+lemma len_remove x l =
+  List.mem x l && dlistp l
+  ==> List.length (remove x l) = List.length l - 1
+[@@by auto]
+
+lemma dlistp_remove x l =
+  dlistp l ==> dlistp (remove x l)
+[@@by auto]
+
+lemma sublistp_remove x s l =
+  sublistp s l && List.mem x s && dlistp s && not (List.mem x l)
+  ==> sublistp (remove x s) l
+[@@by auto]
+
+(* ============================================================
+   NUM_MEMBERS: count elements of u in s; equals length s when s ⊆ u
+   ============================================================ *)
+
+lemma num_members_remove x u s =
+  not (List.mem x u)
+  ==> num_members u (remove x s) = num_members u s
+[@@by auto]
+
+lemma num_members_cons x xs u =
+  not (List.mem x xs) && dlistp u
+  ==> num_members u (x :: xs) = num_members u xs + (if List.mem x u then 1 else 0)
+[@@by auto]
+
+(* s first so induction picks it *)
+lemma num_members_len_h s u =
+  dlistp u && sublistp s u && dlistp s
+  ==> num_members u s = List.length s
+[@@by
+  induction ()
+  @>| [auto;
+       [%use num_members_cons (List.hd s) (List.tl s) u]
+       @> auto]]
+
+lemma num_members_len u s =
+  dlistp u && sublistp s u && dlistp s
+  ==> num_members u s = List.length s
+[@@by [%use num_members_len_h s u] @> auto]
+
+(* ============================================================
+   ALL_SUBLISTP / ALL_DLISTP LEMMAS
+   ============================================================ *)
+
+lemma all_sublistp_mem s ll u =
+  all_sublistp ll u && List.mem s ll ==> sublistp s u
+[@@by auto]
+
+lemma all_sublistp_append ll1 ll2 u =
+  all_sublistp (ll1 @ ll2) u = (all_sublistp ll1 u && all_sublistp ll2 u)
+[@@by auto][@@rw]
+
+lemma all_sublistp_mono ll u x =
+  all_sublistp ll u ==> all_sublistp ll (x :: u)
+[@@by auto]
+
+lemma all_dlistp_mem s ll =
+  all_dlistp ll && List.mem s ll ==> dlistp s
+[@@by auto]
+
+lemma all_dlistp_append ll1 ll2 =
+  all_dlistp (ll1 @ ll2) = (all_dlistp ll1 && all_dlistp ll2)
+[@@by auto][@@rw]
+
+(* ============================================================
+   POWERSET CONSTRUCTION
+   ============================================================ *)
+
+(* Prepend x to every list in ll *)
+let rec prepend (x : 'a) (ll : 'a list list) : 'a list list =
+  match ll with
+  | [] -> []
+  | s :: ss -> (x :: s) :: prepend x ss
+
+(* All subsets of a list *)
+let rec subsets (l : 'a list) : 'a list list =
+  match l with
+  | [] -> [[]]
+  | x :: xs ->
+    let rest = subsets xs in
+    prepend x rest @ rest
+
+(* Filter a list of lists by length *)
+let rec subsets_of_order_aux (k : int) (ll : 'a list list) : 'a list list =
+  match ll with
+  | [] -> []
+  | s :: ss ->
+    if List.length s = k then s :: subsets_of_order_aux k ss
+    else subsets_of_order_aux k ss
+
+(* All k-element subsets of l *)
+let subsets_of_order (k : int) (l : 'a list) : 'a list list =
+  subsets_of_order_aux k (subsets l)
+
+(* ============================================================
+   POWERSET LEMMAS
+   ============================================================ *)
+
+lemma mem_prepend_char x ll s =
+  List.mem s (prepend x ll) = (s <> [] && List.hd s = x && List.mem (List.tl s) ll)
+[@@by auto][@@rw]
+
+lemma mem_subsets_cons s x xs =
+  List.mem s (subsets (x :: xs))
+  = (List.mem s (prepend x (subsets xs)) || List.mem s (subsets xs))
+[@@by auto][@@rw]
+
+lemma subsets_cons x xs =
+  subsets (x :: xs) = prepend x (subsets xs) @ subsets xs
+[@@by auto][@@rw]
+
+lemma mem_of_sublistp x s l =
+  List.mem x s && sublistp s l ==> List.mem x l
+[@@by auto]
+
+lemma mem_hd_of_sublistp r l =
+  r <> [] && sublistp r l ==> List.mem (List.hd r) l
+[@@by auto]
+
+lemma cons_hd_tl (l : 'a list) =
+  l <> [] ==> l = List.hd l :: List.tl l
+[@@by auto]
+
+(* ============================================================
+   NONE_CONTAINS: x not in any set of m
+   ============================================================ *)
+
+let rec none_contains (x : 'a) (m : 'a list list) : bool =
+  match m with
+  | [] -> true
+  | s :: rest -> not (List.mem x s) && none_contains x rest
+
+lemma none_contains_append x ll1 ll2 =
+  none_contains x (ll1 @ ll2) = (none_contains x ll1 && none_contains x ll2)
+[@@by induction ~id:[%id none_contains] () @>>| auto][@@rw]
+
+lemma none_contains_prepend x h ll =
+  none_contains x ll && x <> h
+  ==> none_contains x (prepend h ll)
+[@@by induction ~id:[%id prepend] () @>>| auto]
+
+lemma none_contains_subsets x u =
+  not (List.mem x u) ==> none_contains x (subsets u)
+[@@by
+  induction ~id:[%id subsets] ()
+  @>| [auto;
+       intros
+       @> [%use none_contains_prepend x (List.hd u) (subsets (List.tl u))]
+       @> auto]]
+
+(* ============================================================
+   WELL-FORMEDNESS OF SUBSETS
+   ============================================================ *)
+
+lemma all_sublistp_prepend x ll u =
+  all_sublistp ll u && List.mem x u
+  ==> all_sublistp (prepend x ll) u
+[@@by induction ~id:[%id prepend] () @>>| auto]
+
+lemma all_sublistp_subsets u = all_sublistp (subsets u) u
+[@@by
+  induction ~id:[%id subsets] ()
+  @>| [auto;
+       [%use all_sublistp_mono (subsets (List.tl u)) (List.tl u) (List.hd u)]
+       @> [%use all_sublistp_prepend (List.hd u) (subsets (List.tl u)) u]
+       @> [%use subsets_cons (List.hd u) (List.tl u)]
+       @> auto]]
+
+lemma all_dlistp_prepend x ll =
+  all_dlistp ll && none_contains x ll
+  ==> all_dlistp (prepend x ll)
+[@@by induction ~id:[%id prepend] () @>>| auto]
+
+lemma all_dlistp_subsets u =
+  dlistp u ==> all_dlistp (subsets u)
+[@@by
+  induction ~id:[%id subsets] ()
+  @>| [auto;
+       [%use all_dlistp_prepend (List.hd u) (subsets (List.tl u))]
+       @> [%use none_contains_subsets (List.hd u) (List.tl u)]
+       @> [%use subsets_cons (List.hd u) (List.tl u)]
+       @> auto]]
+
+lemma sublistp_mem_subsets s u =
+  List.mem s (subsets u) ==> sublistp s u
+[@@by
+  [%use all_sublistp_subsets u]
+  @> [%use all_sublistp_mem s (subsets u) u]
+  @> auto]
+
+lemma dlistp_mem_subsets s u =
+  dlistp u && List.mem s (subsets u) ==> dlistp s
+[@@by
+  [%use all_dlistp_subsets u]
+  @> [%use all_dlistp_mem s (subsets u)]
+  @> auto]
+
+lemma all_dlistp_of_sublistp_subsets u l =
+  dlistp u && sublistp l (subsets u) ==> all_dlistp l
+[@@by
+  induction ()
+  @>| [auto;
+       [%use dlistp_mem_subsets (List.hd l) u]
+       @> auto]]
+
+lemma all_sublistp_of_sublistp_subsets u l =
+  dlistp u && sublistp l (subsets u) ==> all_sublistp l u
+[@@by
+  induction ()
+  @>| [auto;
+       [%use sublistp_mem_subsets (List.hd l) u]
+       @> auto]]
+
+(* ============================================================
+   SUBSETS_OF_ORDER (k-element subsets)
+   ============================================================ *)
+
+lemma all_sublistp_filter k ll l =
+  all_sublistp ll l ==> all_sublistp (subsets_of_order_aux k ll) l
+[@@by auto]
+
+lemma all_sublistp_subsets_of_order k l =
+  all_sublistp (subsets_of_order k l) l
+[@@by
+  [%use all_sublistp_subsets l]
+  @> [%use all_sublistp_filter k (subsets l) l]
+  @> auto]
+
+lemma subsets_of_order_aux_append k a b =
+  subsets_of_order_aux k (a @ b)
+  = subsets_of_order_aux k a @ subsets_of_order_aux k b
+[@@by induction ~id:[%id subsets_of_order_aux] () @>>| auto][@@rw]
+
+lemma subsets_of_order_aux_prepend_pos k y ll =
+  k >= 1
+  ==> subsets_of_order_aux k (prepend y ll)
+      = prepend y (subsets_of_order_aux (k - 1) ll)
+[@@by induction ~id:[%id prepend] () @>>| auto]
+
+lemma subsets_of_order_cons_pos k y ys =
+  k >= 1
+  ==> subsets_of_order k (y :: ys)
+      = prepend y (subsets_of_order (k - 1) ys) @ subsets_of_order k ys
+[@@by
+  [%use subsets_of_order_aux_prepend_pos k y (subsets ys)]
+  @> auto]
+
+(* SoO_aux 0 of a prepend is [] — all prepended lists have length >= 1 *)
+lemma subsets_of_order_aux_0_prepend y ll =
+  subsets_of_order_aux 0 (prepend y ll) = []
+[@@by induction ~id:[%id prepend] () @>>| auto]
+
+(* SoO_aux 0 (subsets l) = [[]] for any l *)
+lemma subsets_of_order_aux_0_subsets l =
+  subsets_of_order_aux 0 (subsets l) = [[]]
+[@@by
+  induction ~id:[%id subsets] ()
+  @>| [auto;
+       [%use subsets_of_order_aux_0_prepend (List.hd l) (subsets (List.tl l))]
+       @> auto]]
+
+lemma subsets_of_order_0 l =
+  subsets_of_order 0 l = [[]]
+[@@by [%use subsets_of_order_aux_0_subsets l] @> auto]
+
+(* SoO_aux 1 cons (unfolded form to match induction subgoals) *)
+lemma subsets_of_order_aux_1_subsets_cons y ys =
+  subsets_of_order_aux 1 (subsets (y :: ys))
+  = [y] :: subsets_of_order_aux 1 (subsets ys)
+[@@by
+  [%use subsets_of_order_aux_prepend_pos 1 y (subsets ys)]
+  @> [%use subsets_of_order_aux_0_subsets ys]
+  @> auto][@@rw]
+
+(* SoO_aux 1 on subsets of a nonempty l (abstract form) *)
+lemma subsets_of_order_aux_1_subsets_nonempty l =
+  l <> []
+  ==> subsets_of_order_aux 1 (subsets l)
+      = [List.hd l] :: subsets_of_order_aux 1 (subsets (List.tl l))
+[@@by
+  intros
+  @> [%expand subsets l]
+  @> [%use subsets_of_order_aux_prepend_pos 1 (List.hd l) (subsets (List.tl l))]
+  @> [%use subsets_of_order_aux_0_subsets (List.tl l)]
+  @> auto]
+
+(* ============================================================
+   ALL-NONEMPTY PREDICATE
+   ============================================================ *)
+
+let rec all_nonempty (ll : 'a list list) : bool =
+  match ll with
+  | [] -> true
+  | r :: rest -> r <> [] && all_nonempty rest
+
+lemma all_nonempty_subsets_of_order_aux_pos k ll =
+  k >= 1 ==> all_nonempty (subsets_of_order_aux k ll)
+[@@by induction ~id:[%id subsets_of_order_aux] () @>>| auto]
+
+lemma all_nonempty_subsets_of_order_pos l k =
+  k >= 1 ==> all_nonempty (subsets_of_order k l)
+[@@by [%use all_nonempty_subsets_of_order_aux_pos k (subsets l)] @> auto]
+
+(* ============================================================
+   UNION / INTERSECTION OF A FAMILY OF SETS
+   ============================================================ *)
+
+(* Union of all sets in l *)
+let rec union_list (l : 'a list list) : 'a list =
+  match l with
+  | [] -> []
+  | [s] -> s
+  | s :: rest -> set_union s (union_list rest)
+
+(* Intersection of all sets in l (l must be non-empty) *)
+let rec int_list (l : 'a list list) : 'a list =
+  match l with
+  | [] -> []
+  | [s] -> s
+  | s :: rest -> set_intersect s (int_list rest)
+
+(* Apply int_list to each sub-collection *)
+let rec int_list_list (m : 'a list list list) : 'a list list =
+  match m with
+  | [] -> []
+  | r :: rest -> int_list r :: int_list_list rest
+
+lemma mem_union_list x l =
+  l <> []
+  ==> (List.mem x (union_list l)
+       = (List.mem x (List.hd l) || (List.tl l <> [] && List.mem x (union_list (List.tl l)))))
+[@@by auto]
+
+lemma mem_int_list_mem_hd x r =
+  r <> [] && List.mem x (int_list r) ==> List.mem x (List.hd r)
+[@@by auto]
+
+lemma int_list_list_append a b =
+  int_list_list (a @ b) = int_list_list a @ int_list_list b
+[@@by induction ~id:[%id int_list_list] () @>>| auto][@@rw]
+
+lemma int_list_list_cons_singleton y rest =
+  int_list_list ([y] :: rest) = y :: int_list_list rest
+[@@by auto]
+
+(* ============================================================
+   AGGREGATE LENGTHS
+   ============================================================ *)
+
+let rec sum_lens (ll : 'a list list) : int =
+  match ll with
+  | [] -> 0
+  | s :: rest -> List.length s + sum_lens rest
+
+let sum_len_int (m : 'a list list list) : int =
+  sum_lens (int_list_list m)
+
+(* ============================================================
+   DLISTP / SUBLISTP PRESERVATION THROUGH int_list AND union_list
+   ============================================================ *)
+
+lemma dlistp_sublistp_int_list r u =
+  r <> [] && dlistp (List.hd r) && sublistp (List.hd r) u
+  ==> dlistp (int_list r) && sublistp (int_list r) u
+[@@by
+  intros
+  @> [%cases List.tl r = []]
+  @>| [auto;
+       [%use dlistp_set_intersect (List.hd r) (int_list (List.tl r))]
+       @> [%use sublistp_set_intersect_left (List.hd r) (int_list (List.tl r)) u]
+       @> auto]]
+
+lemma all_dlistp_IL u l m =
+  all_dlistp l && all_sublistp l u
+  && all_nonempty m && all_sublistp m l
+  ==> all_dlistp (int_list_list m)
+[@@by
+  induction ~id:[%id int_list_list] ()
+  @>| [auto;
+       [%use mem_hd_of_sublistp (List.hd m) l]
+       @> [%use all_dlistp_mem (List.hd (List.hd m)) l]
+       @> [%use all_sublistp_mem (List.hd (List.hd m)) l u]
+       @> [%use dlistp_sublistp_int_list (List.hd m) u]
+       @> auto]]
+
+lemma all_sublistp_IL u l m =
+  all_dlistp l && all_sublistp l u
+  && all_nonempty m && all_sublistp m l
+  ==> all_sublistp (int_list_list m) u
+[@@by
+  induction ~id:[%id int_list_list] ()
+  @>| [auto;
+       [%use mem_hd_of_sublistp (List.hd m) l]
+       @> [%use all_dlistp_mem (List.hd (List.hd m)) l]
+       @> [%use all_sublistp_mem (List.hd (List.hd m)) l u]
+       @> [%use dlistp_sublistp_int_list (List.hd m) u]
+       @> auto]]
+
+lemma dlistp_union_list l u =
+  dlistp u && sublistp l (subsets u) ==> dlistp (union_list l)
+[@@by
+  induction ~id:[%id union_list] ()
+  @>>| ([%use dlistp_mem_subsets (List.hd l) u]
+        @> [%use dlistp_set_union (List.hd l) (union_list (List.tl l))]
+        @> auto)]
+
+lemma sublistp_union_list_u l u =
+  dlistp u && sublistp l (subsets u) && l <> [] ==> sublistp (union_list l) u
+[@@by
+  induction ~id:[%id union_list] ()
+  @>>| ([%use sublistp_mem_subsets (List.hd l) u]
+        @> [%use sublistp_set_union (List.hd l) (union_list (List.tl l)) u]
+        @> auto)]
+
+(* ============================================================
+   MULTIPLICITY: num_memberships x m counts sets in m containing x
+   ============================================================ *)
+
+let rec num_memberships (x : 'a) (m : 'a list list) : int =
+  match m with
+  | [] -> 0
+  | s :: rest ->
+    (if List.mem x s then 1 else 0) + num_memberships x rest
+
+lemma num_memberships_nonneg x (m : 'a list list) =
+  num_memberships x m >= 0
+[@@by auto]
+
+lemma num_memberships_leq_length x m =
+  num_memberships x m <= List.length m
+[@@by auto]
+
+lemma num_memberships_cons x s rest =
+  num_memberships x (s :: rest)
+  = (if List.mem x s then 1 else 0) + num_memberships x rest
+[@@by auto]
+
+lemma num_memberships_append x a b =
+  num_memberships x (a @ b) = num_memberships x a + num_memberships x b
+[@@by auto][@@rw]
+
+lemma num_memberships_0_iff_none x m =
+  none_contains x m = (num_memberships x m = 0)
+[@@by induction ()
+  @>>| ([%use num_memberships_nonneg x (List.tl m)] @> auto)][@@rw]
+
+lemma num_memberships_0_not_in_union x l =
+  not (List.mem x (union_list l))
+  ==> num_memberships x l = 0
+[@@by auto]
+
+lemma num_memberships_0_not_mem x s l =
+  num_memberships x l = 0 && List.mem s l
+  ==> not (List.mem x s)
+[@@by induction ()
+  @>>| ([%use num_memberships_nonneg x (List.tl l)] @> auto)]
+
+lemma not_mem_int_list_of_subset x r l =
+  r <> [] && sublistp r l && num_memberships x l = 0
+  ==> not (List.mem x (int_list r))
+[@@by
+  [%use mem_int_list_mem_hd x r]
+  @> [%use num_memberships_0_not_mem x (List.hd r) l]
+  @> auto]
+
+lemma none_contains_int_list_list x m l =
+  all_sublistp m l && num_memberships x l = 0
+  ==> none_contains x (int_list_list m)
+[@@by
+  induction ~id:[%id int_list_list] ()
+  @>>| ([%use not_mem_int_list_of_subset x (List.hd m) l] @> auto)]
+
+lemma num_memberships_0_int_list x l k =
+  not (List.mem x (union_list l))
+  ==> num_memberships x (int_list_list (subsets_of_order k l)) = 0
+[@@by
+  intros
+  @> [%use num_memberships_0_not_in_union x l]
+  @> [%subgoal num_memberships x l = 0]
+  @>| [[%use all_sublistp_subsets_of_order k l]
+       @> [%use none_contains_int_list_list x (subsets_of_order k l) l]
+       @> [%use num_memberships_0_iff_none x (int_list_list (subsets_of_order k l))]
+       @> auto;
+       auto]]
+
+(* ============================================================
+   num_memberships on IL ∘ prepend / subsets_of_order 1
+   ============================================================ *)
+
+lemma num_memberships_IL_SoO_1 x l =
+  num_memberships x (int_list_list (subsets_of_order 1 l))
+  = num_memberships x l
+[@@by
+  induction ~id:[%id num_memberships] ()
+  @>| [auto;
+       [%use subsets_of_order_aux_1_subsets_nonempty l]
+       @> [%use int_list_list_cons_singleton
+             (List.hd l)
+             (subsets_of_order_aux 1 (subsets (List.tl l)))]
+       @> [%use num_memberships_cons x (List.hd l)
+             (int_list_list (subsets_of_order_aux 1 (subsets (List.tl l))))]
+       @> [%expand num_memberships x l]
+       @> auto]]
+
+lemma num_memberships_IL_prepend_not_in x y ll =
+  not (List.mem x y)
+  ==> num_memberships x (int_list_list (prepend y ll)) = 0
+[@@by induction ~id:[%id prepend] () @>>| auto]
+
+lemma num_memberships_IL_prepend_in_nonempty x y ll =
+  List.mem x y && all_nonempty ll
+  ==> num_memberships x (int_list_list (prepend y ll))
+      = num_memberships x (int_list_list ll)
+[@@by induction ~id:[%id prepend] () @>>| auto]
+
+(* ============================================================
+   SUM_MEMBERSHIPS: swap summation order for sum_lens
+   ============================================================ *)
+
+let rec sum_memberships (u : 'a list) (m : 'a list list) : int =
+  match u with
+  | [] -> 0
+  | x :: rest -> num_memberships x m + sum_memberships rest m
+
+lemma sum_memberships_cons u s m =
+  sum_memberships u (s :: m) = num_members u s + sum_memberships u m
+[@@by auto]
+
+lemma sum_lens_eq_sum_memberships u m =
+  dlistp u && all_dlistp m && all_sublistp m u
+  ==> sum_lens m = sum_memberships u m
+[@@by
+  induction ~id:[%id sum_lens] ()
+  @>| [auto;
+       [%use sum_memberships_cons u (List.hd m) (List.tl m)]
+       @> [%use num_members_len u (List.hd m)]
+       @> auto]]
+
+(* ============================================================
+   FILTER: sets in l containing x
+   ============================================================ *)
+
+let rec sets_containing (x : 'a) (l : 'a list list) : 'a list list =
+  match l with
+  | [] -> []
+  | s :: rest ->
+    if List.mem x s then s :: sets_containing x rest
+    else sets_containing x rest

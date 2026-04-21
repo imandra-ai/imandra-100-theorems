@@ -4,7 +4,7 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **27/100**:
+Currently, we have proven **28/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
@@ -33,6 +33,7 @@ Currently, we have proven **27/100**:
 89\. [Factor and Remainder Theorem](#thm-89)  
 91\. [The Triangle Inequality](#thm-91)  
 93\. [The Birthday Problem](#thm-93)  
+96\. [Principle of Inclusion/Exclusion](#thm-96)  
 
 More coming soon!
 
@@ -729,6 +730,40 @@ The smallest number of people for which the probability of a shared birthday exc
 theorem birthday_problem k =
   (0 <= k && k <= 22 ==> collision_prob k <=. 0.5)
   && (k = 23 ==> collision_prob k >. 0.5)
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-96"></a>
+## 96. Principle of Inclusion/Exclusion
+
+[Source: src/inclusion_exclusion.iml](src/inclusion_exclusion.iml)
+
+*Statement (informal):*
+
+If $l = [A_1, \ldots, A_n]$ is a non-empty list of distinct finite subsets of some universe $u$ (each $A_i$ represented as a dlist), then
+
+$$|A_1 \cup \cdots \cup A_n| = \sum_i |A_i| - \sum_{i<j} |A_i \cap A_j| + \sum_{i<j<k} |A_i \cap A_j \cap A_k| - \cdots.$$
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+(* The alternating sum, starting from k-subsets *)
+let rec inc_exc_aux (l : 'a list list) (k : int) : int =
+  if k < 1 || k > List.length l then 0
+  else Sets.(sum_len_int (subsets_of_order k l)
+       - inc_exc_aux l (k + 1))
+
+(* The inclusion-exclusion formula *)
+let inc_exc (l : 'a list list) : int =
+  inc_exc_aux l 1
+
+theorem inclusion_exclusion_principle u l =
+  Sets.(dlistp u && dlistp l && l <> [] && sublistp l (subsets u)
+        ==> inc_exc l = List.length (union_list l))
 ```
 </details>
 

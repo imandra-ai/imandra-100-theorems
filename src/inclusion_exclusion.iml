@@ -1,0 +1,426 @@
+(* Principle of Inclusion/Exclusion
+   Theorem 96 in the 100 Theorems list.
+
+   If l is a list of finite sets (represented as distinct lists),
+   then |A1 ∪ ... ∪ An| = Σ|Ai| - Σ|Ai∩Aj| + Σ|Ai∩Aj∩Ak| - ...
+
+   We prove this using a contribution counting argument based on 
+   the binomial theorem.
+
+   Grant Passmore, Imandra
+ *)
+
+[@@@import "binomial.iml"]
+[@@@import "sets.iml"]
+
+(* ============================================================
+   THE INCLUSION-EXCLUSION FORMULA
+
+   For a family of sets l, compute:
+     Σ |Ai| - Σ |Ai ∩ Aj| + Σ |Ai ∩ Aj ∩ Ak| - ...
+
+   i.e., alternating sum over k-subsets of l of |intersection|.
+   ============================================================ *)
+
+(* The alternating sum, starting from k-subsets *)
+
+let rec inc_exc_aux (l : 'a list list) (k : int) : int =
+  if k < 1 || k > List.length l then 0
+  else Sets.(sum_len_int (subsets_of_order k l)
+       - inc_exc_aux l (k + 1))
+[@@measure Ordinal.of_int (List.length l + 1 - k)]
+
+(* The inclusion-exclusion formula *)
+
+let inc_exc (l : 'a list list) : int =
+  inc_exc_aux l 1
+
+(* Per-element contribution of x, starting from k-subsets *)
+
+let rec inc_exc_contrib (x : 'a) (l : 'a list list) (k : int) : int =
+  if k < 1 || k > List.length l then 0
+  else Sets.(num_memberships x (int_list_list (subsets_of_order k l))
+       - inc_exc_contrib x l (k + 1))
+[@@measure Ordinal.of_int (List.length l + 1 - k)]
+
+(* Sum of contributions over the universe *)
+
+let rec sum_contribs (u : 'a list) (l : 'a list list) (k : int) : int =
+  match u with
+  | [] -> 0
+  | x :: rest -> inc_exc_contrib x l k + sum_contribs rest l k
+
+(* ============================================================
+   TEST EVALUATIONS
+   ============================================================ *)
+
+eval Sets.subsets [1; 2; 3]
+eval Sets.subsets_of_order 2 [1; 2; 3]
+
+(* Example:  A = {1,2}, B = {2,3}, C = {3,4}
+   |A ∪ B ∪ C| = |A|+|B|+|C| - |A∩B| - |A∩C| - |B∩C| + |A∩B∩C|
+               = 2+2+2 - 1 - 0 - 1 + 0 = 4
+               = |{1,2,3,4}| = 4 *)
+
+eval inc_exc [[1;2]; [2;3]; [3;4]]
+eval Sets.union_list [[1;2]; [2;3]; [3;4]]
+eval List.length (Sets.union_list [[1;2]; [2;3]; [3;4]])
+
+(* ============================================================
+   PART B: THE ALTERNATING BINOMIAL SUM IDENTITY
+
+   We need: sum_{k=0}^{n} (-1)^k C(n,k) = 0 for n >= 1
+   which gives: sum_{k=1}^{n} (-1)^{k+1} C(n,k) = 1 for n >= 1
+
+   This is (1 + (-1))^n = 0^n = 0.
+   We prove it by induction using Pascal's identity.
+
+   -- We'll start with ALTERNATING CHOOSE SUM:
+
+   choose_alt_sum n k = C(n,k) - C(n,k+1) + C(n,k+2) - ...
+
+   This matches the structure of inc_exc_contrib (without pow(-1)).
+   Key identity: choose_alt_sum n 1 = 1 for n >= 1.
+   ============================================================ *)
+
+let rec choose_alt_sum (n : int) (k : int) : int =
+  if k < 1 || k > n then 0
+  else Binomial.choose n k - choose_alt_sum n (k + 1)
+[@@measure Ordinal.of_int (n + 1 - k)]
+[@@by auto]
+
+eval choose_alt_sum 1 1   (* 1 *)
+eval choose_alt_sum 2 1   (* C(2,1) - C(2,2) = 2 - 1 = 1 *)
+eval choose_alt_sum 3 1   (* C(3,1) - C(3,2) + C(3,3) = 3 - 3 + 1 = 1 *)
+eval choose_alt_sum 5 1   (* should be 1 *)
+
+(* Binomial coefficient helpers *)
+
+let rec nat_ind (n : int) : int =
+  if n <= 0 then 0 else nat_ind (n - 1)
+[@@measure Ordinal.of_int n][@@by auto]
+
+(* Our trusty crush *)
+
+let crush = Tactic.unroll 10
+
+lemma choose_1 n = n >= 1 ==> Binomial.choose n 1 = n
+[@@by induction ~id:[%id nat_ind] ()
+  @>>| ([%use Binomial.pascal n 1] @> crush)] [@@rw]
+
+(* Recurrence using Pascal:
+   choose_alt_sum (n+1) k = choose_alt_sum n (k-1) + choose_alt_sum n k *)
+(* Induction on range n+1-k *)
+
+let rec cas_ind (n : int) (k : int) : int =
+  if k > n then 0
+  else cas_ind n (k + 1)
+[@@measure Ordinal.of_int (n + 1 - k)] [@@by auto]
+
+(* Recurrence for k >= 2 (k=1 case is circular with the identity) *)
+
+lemma choose_alt_step n k =
+  n >= 1 && k >= 2 && k <= n + 1
+  ==> choose_alt_sum (n + 1) k = choose_alt_sum n (k - 1) + choose_alt_sum n k
+[@@by
+  induction ~id:[%id cas_ind] ()
+  @>| [auto;
+       (* Step: k <= n, IH for k+1 *)
+       intros @> lift_ifs
+       @>| [auto;
+            [%use Binomial.pascal (1 + n) k]
+            @> [%subgoal
+                  choose_alt_sum (n+1) k
+                  = Binomial.choose (n+1) k - choose_alt_sum (n+1) (k+1)
+                  && choose_alt_sum n k = Binomial.choose n k - choose_alt_sum n (k+1)
+                  && choose_alt_sum n (k-1) = Binomial.choose n (k-1) - choose_alt_sum n k]
+            @>| [simplify ()
+                 @>>| arith;
+                 simplify ()
+                 @>>| crush]]]]
+
+(* Main identity: choose_alt_sum n 1 = 1 for n >= 1
+   Proof: by induction on n.
+   Step: choose_alt_sum (n+1) 1 = choose (n+1) 1 - choose_alt_sum (n+1) 2
+         = (n+1) - (choose_alt_sum n 1 + choose_alt_sum n 2)   [recurrence at k=2]
+         = (n+1) - (1 + choose_alt_sum n 2)                    [IH]
+         = n - choose_alt_sum n 2
+         = choose n 1 - choose_alt_sum n 2                     [choose_1]
+         = choose_alt_sum n 1                                  [definition]
+         = 1                                                   [IH]
+*)
+
+lemma choose_alt_sum_eq_1 n =
+  n >= 1 ==> choose_alt_sum n 1 = 1
+[@@by
+  induction ~id:[%id nat_ind] ()
+  @>| [crush;
+       [%use choose_alt_step (n - 1) 2]
+       @> [%use choose_1 (n - 1)]
+       @> [%expand choose_alt_sum n 1]
+       @> [%expand choose_alt_sum (n - 1) 1]
+       @> crush]]
+
+(* ============================================================
+   PART B: CONTRIBUTION IS 0 OR 1
+
+   inc_exc_contrib x l 1 = 1 if x in union, 0 if not.
+
+   Key intermediate: num_memberships x (int_list_list (subsets_of_order k l))
+                     = Binomial.choose (num_memberships x l) k
+
+   Then inc_exc_contrib x l 1 is an alternating sum of C(n_x, k)
+   which equals 1 when n_x >= 1 (x in at least one set).
+   ============================================================ *)
+
+(* Contribution is 0 when x is in no set — direct by induction *)
+
+lemma inc_exc_contrib_0 x l k =
+  not (List.mem x (Sets.union_list l))
+  ==> inc_exc_contrib x l k = 0
+[@@by
+  induction ~id:[%id inc_exc_contrib] ()
+  @>>| ([%use Sets.num_memberships_0_int_list x l k] @> crush)]
+
+(* ============================================================
+   PART A: DECOMPOSE INC_EXC INTO PER-ELEMENT CONTRIBUTIONS
+
+   inc_exc l = sum_contribs u l 1
+
+   where u is the universe containing all elements.
+
+   -- We start with THE KEY COUNTING LEMMA.
+
+   Goal: nm x (IL (SoO k l)) = choose (nm x l) k
+
+   Proof strategy:
+   - Induct on l (via custom two-IH scheme nmc_ind).
+   - Base (l = []): trivial.
+   - Step (l = y :: ys), with IHs for (ys, k-1) and (ys, k):
+     - k = 1 case: reduces to IL(SoO 1 l) = l via num_memberships_IL_SoO_1.
+     - k >= 2 case: Pascal's identity applied after x ∈/∉ y split.
+
+   We split the step into two sub-lemmas (nmc_step_k1, nmc_step_ge_2)
+   that take the needed IH facts as premises, so neither helper needs
+   induction itself. Only the main lemma inducts. *)
+
+(* Function inducing a custom induction scheme, 
+   with `x : 'a` anchor for polymorphic induction. *)
+
+let rec nmc_ind (x : 'a) (l : 'a list list) (k : int) : int =
+  match l with
+  | [] -> 0
+  | _ :: tl -> nmc_ind x tl (k - 1) + nmc_ind x tl k
+[@@adm l]
+
+(* Step helper for k = 1 *)
+
+lemma nmc_step_k1 x l =
+  Sets.dlistp l && l <> []
+  ==> Sets.num_memberships x (Sets.int_list_list (Sets.subsets_of_order 1 l))
+      = Binomial.choose (Sets.num_memberships x l) 1
+[@@by
+  [%use Sets.num_memberships_IL_SoO_1 x l]
+  @> [%use Sets.num_memberships_nonneg x l]
+  @> [%use choose_1 (Sets.num_memberships x l)]
+  @> [%expand Binomial.choose (Sets.num_memberships x l) 1]
+  @> auto]
+
+(* Step helper for k >= 2 — takes the two IH facts as premises *)
+
+lemma nmc_step_ge_2 x l k =
+  let open Sets in
+  l <> [] && dlistp l && k >= 2
+  && num_memberships x
+       (int_list_list (subsets_of_order (k - 1) (List.tl l)))
+     = Binomial.choose (num_memberships x (List.tl l)) (k - 1)
+  && num_memberships x
+       (int_list_list (subsets_of_order k (List.tl l)))
+     = Binomial.choose (num_memberships x (List.tl l)) k
+  ==> num_memberships x (int_list_list (subsets_of_order k l))
+      = Binomial.choose (num_memberships x l) k
+[@@by
+  intros
+  @> [%use Sets.subsets_of_order_cons_pos k (List.hd l) (List.tl l)]
+  @> [%use Sets.all_nonempty_subsets_of_order_pos (List.tl l) (k - 1)]
+  @> [%use Sets.num_memberships_cons x (List.hd l) (List.tl l)]
+  @> [%cases List.mem x (List.hd l)]
+  @>| [[%use Sets.num_memberships_IL_prepend_in_nonempty x (List.hd l)
+          (Sets.subsets_of_order (k - 1) (List.tl l))]
+       @> [%use Binomial.pascal (Sets.num_memberships x (List.tl l) + 1) k]
+       @> [%use Sets.num_memberships_nonneg x (List.tl l)]
+       @> auto;
+       [%use Sets.num_memberships_IL_prepend_not_in x (List.hd l)
+          (Sets.subsets_of_order (k - 1) (List.tl l))]
+       @> auto]]
+[@@disable Sets.subsets_of_order, Sets.subsets_of_order_aux, 
+           Sets.subsets, Sets.int_list_list, Sets.num_memberships]
+
+(* Base case helper: nm x (IL (SoO k [])) = 0 for k >= 1 *)
+
+lemma nmc_base_nil x k =
+  let open Sets in
+  k >= 1
+  ==> num_memberships x (int_list_list (subsets_of_order k []))
+      = Binomial.choose (num_memberships x []) k
+[@@by auto]
+
+(* Main lemma — anchored form for polymorphic induction *)
+
+lemma num_memberships_choose_anchored (x : 'a) (l : 'a list list) (k : int) =
+  nmc_ind x l k = nmc_ind x l k  (* anchor for polymorphism workaround *)
+  && (Sets.dlistp l && k >= 1
+      ==> Sets.(num_memberships x (int_list_list (subsets_of_order k l)))
+          = Binomial.choose (Sets.num_memberships x l) k)
+[@@by
+  induction ~id:[%id nmc_ind] ()
+  @>| [[%use nmc_base_nil x k] @> auto;
+       intros
+       @> [%cases k = 1]
+       @>| [[%use nmc_step_k1 x l] @> auto;
+            [%use nmc_step_ge_2 x l k] @> auto]]]
+[@@disable nmc_ind, Sets.subsets_of_order, Sets.subsets_of_order_aux, Sets.subsets,
+ Sets.int_list_list, Sets.num_memberships]
+
+(* User-facing clean form derived from the anchored one *)
+
+lemma num_memberships_choose x l k =
+  Sets.(dlistp l && k >= 1
+         ==> num_memberships x (int_list_list (subsets_of_order k l))
+               = Binomial.choose (num_memberships x l) k)
+[@@by [%use num_memberships_choose_anchored x l k] @> auto]
+
+(* ============================================================
+   inc_exc_contrib AS ALTERNATING CHOOSE SUM
+   ============================================================ *)
+
+(* Connect inc_exc_contrib to choose_alt_sum via num_memberships_choose *)
+
+lemma inc_exc_contrib_eq_alt x l k =
+  Sets.(dlistp l
+         ==> inc_exc_contrib x l k = choose_alt_sum (num_memberships x l) k)
+[@@by
+  induction ~id:[%id inc_exc_contrib] ()
+  @>| [intros @> [%use Sets.num_memberships_leq_length x l] @> auto;
+       intros
+       @> [%use num_memberships_choose x l k]
+       @> auto]]
+
+(* Contribution is 1 when x is in the union (num_memberships >= 1) *)
+
+lemma num_memberships_pos x l =
+  List.mem x (Sets.union_list l) && l <> []
+  ==> Sets.num_memberships x l >= 1
+[@@by auto]
+
+lemma inc_exc_contrib_1 x l =
+  Sets.dlistp l && List.mem x (Sets.union_list l) && l <> []
+  ==> inc_exc_contrib x l 1 = 1
+[@@by
+  [%use inc_exc_contrib_eq_alt x l 1]
+  @> [%use num_memberships_pos x l]
+  @> [%use choose_alt_sum_eq_1 (Sets.num_memberships x l)]
+  @> crush]
+
+(* ============================================================
+   SUM_CONTRIBS RECURRENCE
+   ============================================================ *)
+
+lemma sum_contribs_step u l k =
+  1 <= k && k <= List.length l
+  ==> sum_contribs u l k
+      = Sets.(sum_memberships u (int_list_list (subsets_of_order k l)))
+        - sum_contribs u l (k + 1)
+[@@by
+  induction ~id:[%id sum_contribs] ()
+  @>| [auto; intros @> auto]]
+
+(* Key step lemma: when k >= 1, sum of lengths of intersections 
+   equals sum of memberships *)
+
+lemma sum_len_int_eq_sum_memberships u l k =
+  let open Sets in
+  dlistp u && sublistp l (subsets u) && k >= 1
+  ==> sum_lens (int_list_list (subsets_of_order k l))
+      = sum_memberships u (int_list_list (subsets_of_order k l))
+[@@by
+  intros
+  @> [%use Sets.all_dlistp_of_sublistp_subsets u l]
+  @> [%use Sets.all_sublistp_of_sublistp_subsets u l]
+  @> [%use Sets.all_nonempty_subsets_of_order_pos l k]
+  @> [%use Sets.all_sublistp_subsets_of_order k l]
+  @> [%use Sets.all_dlistp_IL u l (Sets.subsets_of_order k l)]
+  @> [%use Sets.all_sublistp_IL u l (Sets.subsets_of_order k l)]
+  @> [%use Sets.sum_lens_eq_sum_memberships u (Sets.int_list_list (Sets.subsets_of_order k l))]
+  @> auto]
+
+lemma sum_contribs_out_of_range u l k =
+  k < 1 || k > List.length l
+  ==> sum_contribs u l k = 0
+[@@by induction ~id:[%id sum_contribs] () @>>| auto]
+
+lemma inc_exc_aux_eq_sum_contribs u l k =
+  Sets.(dlistp u && sublistp l (subsets u)
+         ==> inc_exc_aux l k = sum_contribs u l k)
+[@@by
+  induction ~id:[%id inc_exc_aux] ()
+  @>| [intros @> [%use sum_contribs_out_of_range u l k] @> auto;
+       intros
+       @> [%use sum_len_int_eq_sum_memberships u l k]
+       @> [%use sum_contribs_step u l k]
+       @> auto]]
+
+(* The decomposition: inc_exc = sum of contributions *)
+lemma inc_exc_eq_sum_contribs u l =
+  Sets.(dlistp u && dlistp l && l <> [] && sublistp l (subsets u)
+         ==> inc_exc l = sum_contribs u l 1)
+[@@by [%use inc_exc_aux_eq_sum_contribs u l 1] @> auto]
+
+(* ============================================================
+   Now we're close, we prepare to combine these results for our 
+   proof of the main theorem:
+
+   sum_contribs u l 1 counts exactly the elements in the union
+   (each contributing 1 or 0), so it equals len(union_list l).
+   ============================================================ *)
+
+(* Each contribution is 0 or 1, so sum_contribs counts union members *)
+(* Each element of u contributes 1 if in union, 0 if not *)
+
+lemma sum_contribs_count u l =
+  Sets.(dlistp l && l <> []
+         ==> sum_contribs u l 1 = num_members u (union_list l))
+[@@by
+  induction ~id:[%id sum_contribs] ()
+  @>| [auto;
+       [%use inc_exc_contrib_0 (List.hd u) l 1]
+       @> [%use inc_exc_contrib_1 (List.hd u) l]
+       @> crush]]
+
+lemma sum_contribs_len_union u l =
+  Sets.(dlistp u && dlistp l && l <> [] && sublistp l (subsets u)
+         ==> sum_contribs u l 1 = List.length (union_list l))
+[@@by
+  [%use sum_contribs_count u l]
+  @> [%use Sets.num_members_len u (Sets.union_list l)]
+  @> [%use Sets.dlistp_union_list l u]
+  @> [%use Sets.sublistp_union_list_u l u]
+  @> crush]
+
+  (* At last, our main theorem!
+
+     The Inclusion-Exclusion Principle:
+
+     If l = [A1; ...; An] is a non-empty list of distinct finite subsets
+     of some universe u (each Ai represented as a dlist), then:
+
+       |A1 ∪ ... ∪ An| = Σ|Ai| - Σ|Ai ∩ Aj| + Σ|Ai ∩ Aj ∩ Ak| - ...
+   *)
+
+theorem inclusion_exclusion_principle u l =
+  Sets.(dlistp u && dlistp l && l <> [] && sublistp l (subsets u)
+        ==> inc_exc l = List.length (union_list l))
+[@@by
+  [%use inc_exc_eq_sum_contribs u l]
+  @> [%use sum_contribs_len_union u l]
+  @> crush]
