@@ -10,6 +10,9 @@
    *Finished while 40,000 feet up, en route from Austin to Boston!
  *)
 
+[@@@import Sets, "sets.iml"]
+open Sets
+
 (* ============================================================
    SUBSEQUENCES
    ============================================================ *)
@@ -20,18 +23,6 @@ let rec subseqp (l : 'a list) (m : 'a list) : bool =
   | x :: xs, y :: ys -> if x = y then subseqp xs ys else subseqp l ys
   | _ -> false
 [@@adm m]
-
-(* Distinct list, i.e., a list with no duplicates *)
-let rec dlistp (l : 'a list) : bool =
-  match l with
-  | [] -> true
-  | x :: xs -> not (List.mem x xs) && dlistp xs
-
-(* Cons onto each element of a list of lists *)
-let rec conses (x : 'a) (ll : 'a list list) : 'a list list =
-  match ll with
-  | [] -> []
-  | s :: ss -> (x :: s) :: conses x ss
 
 (* ============================================================
    ASCENDING AND DESCENDING
@@ -58,7 +49,7 @@ let rec ascending_subseqs_aux (x : real) (l : real list) : real list list =
   | [] -> [[]]
   | y :: ys ->
     if x <. y then
-      conses y (ascending_subseqs_aux y ys) @ ascending_subseqs_aux x ys
+      prepend y (ascending_subseqs_aux y ys) @ ascending_subseqs_aux x ys
     else
       ascending_subseqs_aux x ys
 [@@adm l]
@@ -67,7 +58,7 @@ let rec ascending_subseqs (l : real list) : real list list =
   match l with
   | [] -> [[]]
   | x :: xs ->
-    conses x (ascending_subseqs_aux x xs) @ ascending_subseqs xs
+    prepend x (ascending_subseqs_aux x xs) @ ascending_subseqs xs
 [@@measure Ordinal.of_int (List.length l)]
 [@@by auto]
 
@@ -80,7 +71,7 @@ let rec descending_subseqs_aux (x : real) (l : real list) : real list list =
   | [] -> [[]]
   | y :: ys ->
     if x >. y then
-      conses y (descending_subseqs_aux y ys) @ descending_subseqs_aux x ys
+      prepend y (descending_subseqs_aux y ys) @ descending_subseqs_aux x ys
     else
       descending_subseqs_aux x ys
 [@@adm l]
@@ -89,7 +80,7 @@ let rec descending_subseqs (l : real list) : real list list =
   match l with
   | [] -> [[]]
   | x :: xs ->
-    conses x (descending_subseqs_aux x xs) @ descending_subseqs xs
+    prepend x (descending_subseqs_aux x xs) @ descending_subseqs xs
 [@@measure Ordinal.of_int (List.length l)]
 [@@by auto]
 
@@ -107,15 +98,6 @@ let crush = Tactic.unroll 10
 (* ============================================================
    BASIC SUBSEQUENCE LEMMAS
    ============================================================ *)
-
-lemma mem_append (x : 'a) (y : 'a list) (z : 'a list) =
-  List.mem x (y @ z) = (List.mem x y || List.mem x z)
-[@@by auto][@@rw]
-
-lemma mem_conses_char (a : 'a) (ll : 'a list list) (s : 'a list) =
-  List.mem s (conses a ll)
-  = (s <> [] && List.hd s = a && List.mem (List.tl s) ll)
-[@@by auto][@@rw]
 
 lemma subseq_nil xs = subseqp ([] : 'a list) xs
 [@@by auto][@@rw]
@@ -1095,6 +1077,7 @@ lemma not_mem_pair_map x xs full =
        @> [%use all_mem_of_hd xs full]
        @> [%use all_mem_of_tl xs full]
        @> unroll 10]]
+[@@disable desc_len_at, asc_len_at, List.mem]
 
 lemma pair_map_distinct_gen l full =
   dlistp l && dlistp full && all_mem_of l full
@@ -1105,6 +1088,7 @@ lemma pair_map_distinct_gen l full =
        [%use not_mem_pair_map (List.hd l) (List.tl l) full]
        @> [%use all_mem_of_tl l full]
        @> auto]]
+[@@disable desc_len_at, asc_len_at, List.mem]
 
 lemma pair_map_distinct l =
   dlistp l
@@ -1258,7 +1242,7 @@ lemma prod_mono a d r s =
 lemma es_arith n a d r s =
   n <= a * d && n > r * s && r >= 0 && s >= 0 && a >= 0 && d >= 0
   ==> a > r || d > s
-[@@by [%use prod_mono a d r s] @> auto]
+[@@by [%use prod_mono a d r s] @> arith]
 
 (* Finally, our main theorem!
 
@@ -1277,7 +1261,8 @@ theorem erdos_szekeres l r s =
   ==> List.length (longest_ascending_subseq l) > r
       || List.length (longest_descending_subseq l) > s
 [@@by
-  [%use erdos_szekeres_bound l]
+  intros 
+  @> [%use erdos_szekeres_bound l]
   @> [%use es_arith (List.length l)
        (List.length (longest_ascending_subseq l))
        (List.length (longest_descending_subseq l)) r s]
