@@ -4,13 +4,14 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **28/100**:
+Currently, we have proven **29/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
 4\. [Pythagorean Theorem](#thm-4)  
 10\. [Euler's Generalization of Fermat's Little Theorem](#thm-10)  
 11\. [Infinitude of Primes](#thm-11)  
+30\. [The Ballot Problem](#thm-30)  
 34\. [Divergence of the Harmonic Series](#thm-34)  
 38\. [Arithmetic Mean/Geometric Mean](#thm-38)  
 42\. [Sum of the Reciprocals of the Triangular Numbers](#thm-42)  
@@ -144,6 +145,38 @@ theorem euler a n =
 theorem infinitude_of_primes n =
   let bigger_prime = euclid (abs n) in
   is_prime bigger_prime && bigger_prime > n
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-30"></a>
+## 30. The Ballot Problem
+
+[Source: src/ballot.iml](src/ballot.iml)
+
+*Statement (informal):*
+
+In an election where candidate A receives $a$ votes and candidate B receives $b$ votes with $a > b$, the probability that A is strictly ahead of B throughout the count is
+
+$$\frac{a - b}{a + b}.$$
+
+Equivalently, in integer form: among all $n!$ orderings of the $n = a + b$ voters (where $e$ is the set of A-supporters), the number of favorable orderings (in which A maintains a strict lead at every non-empty prefix) is
+
+$$(a - b)\cdot (n - 1)!.$$
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem ballot_theorem (p : int list) e =
+  Sets.dlistp p
+  ==> num_favs (perms p) e * List.length p
+      = (if a_count p e > b_count p e
+         then a_count p e - b_count p e
+         else 0)
+        * Combinations.fact (List.length p)
 ```
 </details>
 

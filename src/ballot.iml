@@ -1,0 +1,832 @@
+(* A proof of The Ballot Theorem in Imandra.
+   Theorem 30 in the 100 Theorems list.
+
+   In an election where candidate A gets a votes and candidate B gets
+   b votes with a > b, the probability that A stays strictly ahead
+   throughout the count is (a - b) / (a + b).
+
+   In integer form: the number of favorable orderings of the electorate
+   equals (a - b) * (n - 1)! where n = a + b; equivalently,
+
+      num_favs (perms p) e * n = (a - b) * n!
+
+   where p is the electorate (dlist of voters), e is the set of
+   A-supporters, a = a_count p e, b = b_count p e, n = |p|.
+
+   Grant Passmore, Imandra
+ *)
+
+[@@@import "sets.iml"]
+[@@@import "combinations.iml"]
+
+(* ============================================================
+   APPEND_EACH: append y at the end of each list in ll
+   ============================================================ *)
+
+let rec append_each (ll : 'a list list) (y : 'a) : 'a list list =
+  match ll with
+  | [] -> []
+  | c :: rest -> (c @ [y]) :: append_each rest y
+
+(* ============================================================
+   PERMUTATIONS via perms_aux (Russinoff-style)
+
+   perms_aux cands p builds all permutations of p whose LAST element
+   is some x ∈ cands. It does this by, for each such x, taking all
+   permutations of (remove x p) and appending x at the end.
+
+   Since perms_aux calls itself on (remove x p) with itself (not on
+   a separate perms), this is single-recursion with a structural
+   measure (|p|*(|p|+1) + |cands|).
+   ============================================================ *)
+
+lemma len_remove_lt x l =
+  List.mem x l ==> List.length (Sets.remove x l) < List.length l
+[@@by induction ~id:[%id Sets.remove] () @>>| auto]
+
+let rec perms_aux (candidates : 'a list) (p : 'a list) : 'a list list =
+  match candidates with
+  | [] -> []
+  | x :: rest ->
+    (if not (List.mem x p) then []
+     else
+       let subp = Sets.remove x p in
+       let sub_perms =
+         if subp = [] then [[]]
+         else perms_aux subp subp
+       in
+       append_each sub_perms x)
+    @ perms_aux rest p
+[@@measure
+  Ordinal.pair
+    (Ordinal.of_int (List.length p))
+    (Ordinal.of_int (List.length candidates))]
+[@@by [%use len_remove_lt (List.hd candidates) p] @> simplify () @>>| auto]
+
+let perms (p : 'a list) : 'a list list =
+  if p = [] then [[]] else perms_aux p p
+
+(* ============================================================
+   VOTE COUNTING
+   ============================================================ *)
+
+let rec a_count (c : 'a list) (e : 'a list) : int =
+  match c with
+  | [] -> 0
+  | x :: rest -> (if List.mem x e then 1 else 0) + a_count rest e
+
+let b_count (c : 'a list) (e : 'a list) : int =
+  List.length c - a_count c e
+
+(* ============================================================
+   FAVORABLE TALLIES (chronological convention)
+
+   Tally c = [first_vote; ...; last_vote]. favp c e holds iff every
+   non-empty prefix of c has a_count > b_count. Implemented via an
+   accumulator tracking the running (a, b) tally.
+   ============================================================ *)
+
+let rec favp_from (a : int) (b : int) (c : 'a list) (e : 'a list) : bool =
+  match c with
+  | [] -> true
+  | x :: rest ->
+    let a' = a + (if List.mem x e then 1 else 0) in
+    let b' = b + (if List.mem x e then 0 else 1) in
+    a' > b' && favp_from a' b' rest e
+[@@adm c]
+
+let favp (c : 'a list) (e : 'a list) : bool =
+  c <> [] && favp_from 0 0 c e
+
+let rec num_favs (l : 'a list list) (e : 'a list) : int =
+  match l with
+  | [] -> 0
+  | c :: rest -> (if favp c e then 1 else 0) + num_favs rest e
+
+(* ============================================================
+   TEST EVALUATIONS
+   ============================================================ *)
+
+eval perms [1; 2; 3]
+eval a_count [1; 2; 3] [1; 2]
+eval b_count [1; 2; 3] [1; 2]
+eval num_favs (perms [1; 2; 3]) [1; 2]     (* expect 2 *)
+eval num_favs (perms [1; 2; 3]) [1; 2; 3]  (* expect 6 *)
+eval num_favs (perms [1; 2; 3]) []         (* expect 0 *)
+
+(* ============================================================
+   SKOLEM: last_of / remove_last
+   ============================================================ *)
+
+let rec last_of (c : 'a list) : 'a =
+  match c with
+  | [x] -> x
+  | _ :: rest -> last_of rest
+  | [] -> List.hd c
+
+let rec remove_last (c : 'a list) : 'a list =
+  match c with
+  | [] -> []
+  | [_] -> []
+  | x :: rest -> x :: remove_last rest
+
+lemma last_of_append_single s y =
+  last_of (s @ [y]) = y
+[@@by induction ~vars:["s"] () @>>| auto] [@@rw]
+
+lemma remove_last_append_single s y =
+  remove_last (s @ [y]) = s
+[@@by induction ~vars:["s"] () @>>| auto] [@@rw]
+
+lemma append_single_nonempty s y =
+  s @ [y] <> []
+[@@by induction ~vars:["s"] () @>>| auto] [@@rw]
+
+lemma a_count_append_last c x e =
+  a_count (c @ [x]) e = a_count c e + (if List.mem x e then 1 else 0)
+[@@by induction ~vars:["c"] () @>>| auto] [@@rw]
+
+(* ============================================================
+   FAVORABILITY IMPLIES FINAL LEAD
+   ============================================================ *)
+
+lemma favp_from_final a b c e =
+  c <> [] && favp_from a b c e
+  ==> a + a_count c e > b + b_count c e
+[@@by induction ~id:[%id favp_from] () @>>| auto]
+
+(* This theorem is so beautiful! :-) *)
+
+lemma favp_implies_ahead c e =
+  favp c e ==> a_count c e > b_count c e
+[@@by
+  [%cases c = []]
+  @>| [auto;
+       [%use favp_from_final 0 0 c e] @> auto]]
+
+(* ============================================================
+   favp TRANSFERS OVER APPEND_LAST WHEN a > b
+
+   If c is a perm of p with a_count p e > b_count p e, appending any
+   x ∈ p to c doesn't change favp. This is the key rewrite that us 
+   collapse the recursion.
+
+   Specifically, for c with c non-empty:
+     favp (c @ [x]) e = favp c e   when a > b of (c @ [x]).
+   ============================================================ *)
+
+lemma favp_from_append a b c x e =
+  favp_from a b (c @ [x]) e
+  = (favp_from a b c e
+     && (let a' = a + a_count c e + (if List.mem x e then 1 else 0) in
+         let b' = b + (List.length c + 1 - a_count (c @ [x]) e) in
+         a' > b'))
+[@@by induction ~id:[%id favp_from] () @>>| auto]
+
+lemma favp_append_last c x e =
+  c <> [] && a_count (c @ [x]) e > List.length (c @ [x]) - a_count (c @ [x]) e
+  ==> favp (c @ [x]) e = favp c e
+[@@by
+  [%cases c = []]
+  @>| [auto;
+       [%use favp_from_append 0 0 c x e]
+       @> [%use favp_from_final 0 0 c e]
+       @> auto]]
+
+(* ============================================================
+   NUM_FAVS DISTRIBUTES OVER APPEND (favs_append)
+   ============================================================ *)
+
+lemma num_favs_append l1 l2 e =
+  num_favs (l1 @ l2) e = num_favs l1 e + num_favs l2 e
+[@@by induction ~vars:["l1"] () @>>| auto] [@@rw]
+
+(* ============================================================
+   KEY REWRITE: favs_conses_perms in our chronological convention.
+
+   num_favs (append_each l x) e = num_favs l e
+   when every c in l has tally making c @ [x] favorable iff c is.
+
+   Specifically: when a_count c e + (if mem x e then 1 else 0) >
+                      |c| + 1 - (a_count c e + (if mem x e then 1 else 0))
+   for every c in l. We'll specialize this later via the a > b hypothesis.
+   ============================================================ *)
+
+(* Predicate: every c in l is non-empty, has a_count = a and length = n *)
+
+let rec all_tally (l : 'a list list) (e : 'a list) (a : int) (n : int) : bool =
+  match l with
+  | [] -> true
+  | c :: rest ->
+    c <> [] && a_count c e = a && List.length c = n
+    && all_tally rest e a n
+
+lemma num_favs_append_each_eq l x e a n =
+  all_tally l e a n
+  && a + (if List.mem x e then 1 else 0)
+     > (n + 1) - (a + (if List.mem x e then 1 else 0))
+  ==> num_favs (append_each l x) e = num_favs l e
+[@@by induction ~vars:["l"] ()
+  @>| [auto;
+       [%use favp_append_last (List.hd l) x e] @> auto]]
+
+(* ============================================================
+   a_count AND length PRESERVATION UNDER perms_aux
+
+   Every element c of (perms_aux cands p) is a non-empty list of
+   length |p| whose a_count equals a_count p e.
+   ============================================================ *)
+
+let rec all_a_count (l : 'a list list) (e : 'a list) (k : int) : bool =
+  match l with
+  | [] -> true
+  | c :: rest -> a_count c e = k && all_a_count rest e k
+
+let rec all_len (l : 'a list list) (n : int) : bool =
+  match l with
+  | [] -> true
+  | c :: rest -> List.length c = n && all_len rest n
+
+let rec all_nonempty (l : 'a list list) : bool =
+  match l with
+  | [] -> true
+  | c :: rest -> c <> [] && all_nonempty rest
+
+lemma all_a_count_append l1 l2 e k =
+  all_a_count (l1 @ l2) e k = (all_a_count l1 e k && all_a_count l2 e k)
+[@@by induction ~vars:["l1"] () @>>| auto] [@@rw]
+
+lemma all_len_append l1 l2 n =
+  all_len (l1 @ l2) n = (all_len l1 n && all_len l2 n)
+[@@by induction ~vars:["l1"] () @>>| auto] [@@rw]
+
+lemma all_nonempty_append l1 l2 =
+  all_nonempty (l1 @ l2) = (all_nonempty l1 && all_nonempty l2)
+[@@by induction ~vars:["l1"] () @>>| auto] [@@rw]
+
+lemma all_a_count_append_each l x e a =
+  all_a_count l e a
+  ==> all_a_count (append_each l x) e (a + (if List.mem x e then 1 else 0))
+[@@by induction ~vars:["l"] () @>>| auto]
+
+lemma all_len_append_each l x n =
+  all_len l n ==> all_len (append_each l x) (n + 1)
+[@@by induction ~vars:["l"] () @>>| auto]
+
+lemma all_nonempty_append_each l x =
+  all_nonempty (append_each l x)
+[@@by induction ~vars:["l"] () @>>| auto]
+
+lemma a_count_remove1 p x e =
+  Sets.dlistp p && List.mem x p
+  ==> a_count (Sets.remove x p) e
+      = a_count p e - (if List.mem x e then 1 else 0)
+[@@by auto]
+
+(* Custom scheme matching perms_aux's recursion. Returns a bool so
+   Imandra sees a predicate-style recursion. *)
+
+let rec pa_scheme (candidates : 'a list) (p : 'a list) : bool =
+  match candidates with
+  | [] -> true
+  | x :: rest ->
+    let subp = Sets.remove x p in
+    pa_scheme rest p
+    && (not (List.mem x p && subp <> []) || pa_scheme subp subp)
+[@@measure
+  Ordinal.pair
+    (Ordinal.of_int (List.length p))
+    (Ordinal.of_int (List.length candidates))]
+[@@by [%use len_remove_lt (List.hd candidates) p] @> simplify () @>>| auto]
+
+(* Helper for the subp case: preserved a_count for the subp-subp sub-perms *)
+
+lemma all_a_count_perms_aux_subp p x e =
+  Sets.dlistp p && List.mem x p && Sets.remove x p <> []
+  && all_a_count (perms_aux (Sets.remove x p) (Sets.remove x p)) e
+                 (a_count (Sets.remove x p) e)
+  ==> all_a_count (append_each (perms_aux (Sets.remove x p) (Sets.remove x p)) x)
+                  e (a_count p e)
+[@@by
+  [%use a_count_remove1 p x e]
+  @> [%use all_a_count_append_each
+       (perms_aux (Sets.remove x p) (Sets.remove x p)) x e
+       (a_count (Sets.remove x p) e)]
+  @> auto]
+
+lemma all_a_count_perms_aux candidates p e =
+  Sets.dlistp p
+  ==> (all_a_count (perms_aux candidates p) e (a_count p e)
+       && pa_scheme candidates p)
+[@@by induction ~id:[%id pa_scheme] ()
+  @>>| ([%use all_a_count_perms_aux_subp p (List.hd candidates) e]
+        @> [%use Sets.dlistp_remove (List.hd candidates) p]
+        @> simplify () @>>| auto)]
+
+(* For nonempty, we don't need the nested recursion — it's immediate from
+   append_each being nonempty and perms_aux's structure. *)
+
+lemma all_nonempty_perms_aux candidates p =
+  all_nonempty (perms_aux candidates p)
+[@@by induction ~vars:["candidates"] ()
+  @>>| ([%use all_nonempty_append_each
+               (perms_aux (Sets.remove (List.hd candidates) p)
+                          (Sets.remove (List.hd candidates) p))
+               (List.hd candidates)]
+        @> auto)]
+
+lemma all_len_perms_aux_subp p x =
+  Sets.dlistp p && List.mem x p && Sets.remove x p <> []
+  && all_len (perms_aux (Sets.remove x p) (Sets.remove x p))
+             (List.length (Sets.remove x p))
+  ==> all_len (append_each (perms_aux (Sets.remove x p) (Sets.remove x p)) x)
+              (List.length p)
+[@@by
+  [%use Sets.len_remove x p]
+  @> [%use all_len_append_each (perms_aux (Sets.remove x p) (Sets.remove x p)) x
+           (List.length (Sets.remove x p))]
+  @> auto]
+
+lemma all_len_perms_aux candidates p =
+  Sets.dlistp p
+  ==> (all_len (perms_aux candidates p) (List.length p)
+       && pa_scheme candidates p)
+[@@by induction ~id:[%id pa_scheme] ()
+  @>>| ([%use all_len_perms_aux_subp p (List.hd candidates)]
+        @> [%use Sets.dlistp_remove (List.hd candidates) p]
+        @> simplify () @>>| auto)]
+
+(* ============================================================
+   NUM_FAVS IS 0 WHEN a <= b
+
+   When A's total count does not strictly exceed B's, no ordering
+   is favorable, so num_favs = 0.
+
+   Proof: every c in (perms_aux p p) has a_count c e = a_count p e
+   and length c = |p| (from the preservation lemmas), so
+   b_count c e = b_count p e. If a <= b then favp c ==> a > b
+   (contradiction), so no c is favorable.
+   ============================================================ *)
+
+let rec all_not_favp (l : 'a list list) (e : 'a list) : bool =
+  match l with
+  | [] -> true
+  | c :: rest -> not (favp c e) && all_not_favp rest e
+
+lemma num_favs_of_all_not_favp l e =
+  all_not_favp l e ==> num_favs l e = 0
+[@@by induction ~vars:["l"] () @>>| auto]
+
+lemma all_not_favp_of_tally l e a n =
+  all_a_count l e a && all_len l n && 2 * a <= n
+  ==> all_not_favp l e
+[@@by induction ~vars:["l"] ()
+  @>>| ([%use favp_implies_ahead (List.hd l) e] @> auto)]
+
+
+(* ============================================================
+   KEY REWRITE: when a > b on p, num_favs distributes over append_each
+
+   If every c in l has a_count = a_q and length = n_q, and
+   2*a_q + 2 > n_q + 1 (i.e., appending x to each makes favorable
+   condition check automatic), then:
+   num_favs (append_each l x) e = num_favs l e.
+
+   This is the core "favs_conses_perms" insight (I believe originally
+   from Russinoff) — when A is already strictly ahead in p, 
+   inserting any vote at the end doesn't change favorability.
+   ============================================================ *)
+
+lemma all_tally_from_parts l e a n =
+  all_a_count l e a && all_len l n && all_nonempty l
+  ==> all_tally l e a n
+[@@by induction ~vars:["l"] () @>>| auto]
+
+lemma num_favs_append_each_when_ahead l x e a n =
+  all_a_count l e a && all_len l n && all_nonempty l
+  && 2 * (a + (if List.mem x e then 1 else 0)) > n + 1
+  ==> num_favs (append_each l x) e = num_favs l e
+[@@by
+  [%use all_tally_from_parts l e a n]
+  @> [%use num_favs_append_each_eq l x e a n]
+  @> auto]
+
+lemma sublistp_self p =
+  Sets.sublistp p p
+[@@by induction ~vars:["p"] () @>>| auto]
+
+lemma len_eq_a_count_plus_b_count p e =
+  List.length p = a_count p e + b_count p e
+[@@by auto]
+
+lemma a_count_nonneg p e =
+  a_count p e >= 0
+[@@by auto] [@@fc]
+
+lemma b_count_nonneg p e =
+  b_count p e >= 0
+[@@by auto] [@@fc]
+
+(* ============================================================
+   GENERALIZED: num_favs_zero for perms_aux when a <= b
+   ============================================================ *)
+
+lemma num_favs_zero_perms_aux candidates p e =
+  Sets.dlistp p && a_count p e <= b_count p e
+  ==> num_favs (perms_aux candidates p) e = 0
+[@@by
+  [%use all_a_count_perms_aux candidates p e]
+  @> [%use all_len_perms_aux candidates p]
+  @> [%use all_not_favp_of_tally (perms_aux candidates p) e
+           (a_count p e) (List.length p)]
+  @> [%use num_favs_of_all_not_favp (perms_aux candidates p) e]
+  @> auto]
+
+(* ============================================================
+   GENERALIZED BALLOT THEOREM (Russinoff-style!)
+
+   For any sublist candidates of p with |p| >= 1:
+     num_favs (perms_aux candidates p) e * (|p| - 1)
+       = (if a > b then sum_gap_pos candidates p e else 0)
+         * fact (|p| - 1)
+
+   Setting candidates = p collapses this to the main ballot theorem
+   via sum_gap_pos_p.
+   ============================================================ *)
+
+(* Abbreviation for the target formula's RHS *)
+
+let ballot_gen_rhs (candidates : 'a list) (p : 'a list) (e : 'a list) : int =
+  if a_count p e > b_count p e then
+    if List.length p = 1 then a_count candidates e
+    else Combinations.fact (List.length p - 2)
+         * (List.length candidates * (a_count p e - b_count p e + 1)
+            - 2 * a_count candidates e)
+  else 0
+
+(* Helper: when |p| = 1 and a > b, the single element is in e and any
+   element of a sublist of p equals it. *)
+
+lemma size_one_hd_in_e p e =
+  List.length p = 1 && a_count p e > b_count p e
+  ==> List.mem (List.hd p) e
+[@@by auto]
+
+lemma size_one_mem_eq_hd x p =
+  List.length p = 1 && List.mem x p ==> x = List.hd p
+[@@by auto]
+
+(* Step case, when |p| = 1 and a > b (so p = [y] with y in e):
+   num_favs (perms_aux candidates [y]) e = a_count candidates e.
+   Direct induction on candidates. *)
+
+lemma sublistp_cons_sublistp_tl x rest l =
+  Sets.sublistp (x :: rest) l ==> Sets.sublistp rest l
+[@@by auto]
+
+(* Compute perms_aux (x :: rest) p when x ∈ p and remove x p = []:
+   perms_aux (x :: rest) p = [[x]] @ perms_aux rest p *)
+
+lemma perms_aux_cons_empty_subp x rest p =
+  List.mem x p && Sets.remove x p = []
+  ==> perms_aux (x :: rest) p = [x] :: perms_aux rest p
+[@@by auto]
+
+(* When |p| = 1 and x = hd p, remove x p = []. *)
+
+lemma remove_hd_size_one x p =
+  List.length p = 1 && x = List.hd p ==> Sets.remove x p = []
+[@@by auto]
+
+(* Explicit step: given IH on rest, prove for (x :: rest). *)
+
+lemma num_favs_perms_aux_size_one_step x rest p e =
+  Sets.dlistp p && Sets.sublistp (x :: rest) p
+  && List.length p = 1 && a_count p e > b_count p e
+  && num_favs (perms_aux rest p) e = a_count rest e
+  ==> num_favs (perms_aux (x :: rest) p) e = a_count (x :: rest) e
+[@@by
+  [%use size_one_hd_in_e p e]
+  @> [%use size_one_mem_eq_hd x p]
+  @> [%use Sets.mem_of_sublistp x (x :: rest) p]
+  @> [%use remove_hd_size_one x p]
+  @> [%use perms_aux_cons_empty_subp x rest p]
+  @> unroll 50]
+
+let crush = Tactic.unroll 10
+
+lemma num_favs_perms_aux_size_one candidates p e =
+  Sets.dlistp p && Sets.sublistp candidates p
+  && List.length p = 1 && a_count p e > b_count p e
+  ==> num_favs (perms_aux candidates p) e = a_count candidates e
+[@@by induction ~vars:["candidates"] ()
+  @>>| ([%use num_favs_perms_aux_size_one_step
+                (List.hd candidates) (List.tl candidates) p e]
+        @> [%use sublistp_cons_sublistp_tl (List.hd candidates) (List.tl candidates) p]
+        @> crush)]
+
+(* Helper: when a > b on p and |p| >= 2, 
+   perms_aux (x :: rest) p decomposes via append_each *)
+
+lemma perms_aux_cons_nonempty_subp x rest p =
+  List.mem x p && Sets.remove x p <> []
+  ==> perms_aux (x :: rest) p
+      = append_each (perms_aux (Sets.remove x p) (Sets.remove x p)) x
+        @ perms_aux rest p
+[@@by auto]
+
+(* num_favs over the decomposition, when a > b *)
+
+lemma num_favs_step_decompose x rest p e =
+  Sets.dlistp p && Sets.sublistp (x :: rest) p
+  && List.length p >= 2 && a_count p e > b_count p e
+  ==> num_favs (perms_aux (x :: rest) p) e
+      = num_favs (perms_aux (Sets.remove x p) (Sets.remove x p)) e
+        + num_favs (perms_aux rest p) e
+[@@by
+  [%use Sets.mem_of_sublistp x (x :: rest) p]
+  @> [%use Sets.len_remove x p]
+  @> [%use perms_aux_cons_nonempty_subp x rest p]
+  @> [%use all_a_count_perms_aux
+           (Sets.remove x p) (Sets.remove x p) e]
+  @> [%use all_len_perms_aux
+           (Sets.remove x p) (Sets.remove x p)]
+  @> [%use all_nonempty_perms_aux
+           (Sets.remove x p) (Sets.remove x p)]
+  @> [%use Sets.dlistp_remove x p]
+  @> [%use a_count_remove1 p x e]
+  @> [%use num_favs_append_each_when_ahead
+           (perms_aux (Sets.remove x p) (Sets.remove x p))
+           x e
+           (a_count (Sets.remove x p) e)
+           (List.length (Sets.remove x p))]
+  @> auto]
+
+(* Helpers for subp's a_count/b_count/length *)
+
+lemma a_count_remove_in_e p x e =
+  Sets.dlistp p && List.mem x p
+  ==> a_count (Sets.remove x p) e = a_count p e - (if List.mem x e then 1 else 0)
+[@@by auto]
+
+lemma b_count_remove p x e =
+  Sets.dlistp p && List.mem x p
+  ==> b_count (Sets.remove x p) e
+      = b_count p e - (if List.mem x e then 0 else 1)
+[@@by [%use Sets.len_remove x p] @> [%use a_count_remove_in_e p x e] @> auto]
+
+(* fact(n-2) decomposes as (n-2) * fact(n-3) for n >= 3 *)
+
+lemma fact_n_minus_two n =
+  n >= 3 ==> Combinations.fact (n - 2) = (n - 2) * Combinations.fact (n - 3)
+[@@by auto]
+
+lemma list_len_2_eq (l : 'a list) =
+  List.length l = 2 ==> l = [List.hd l; List.hd (List.tl l)]
+[@@by auto]
+
+(* For |p| = 2 with a > b: a = 2, 
+   so x_e = 1 (every element is in e). *)
+
+lemma size_two_all_in_e (p : 'a list) e x =
+  Sets.dlistp p && List.length p = 2 && List.mem x p
+  && a_count p e > b_count p e
+  ==> List.mem x e
+[@@by
+  intros
+  @> [%use list_len_2_eq p]
+  @> [%replace p]
+  @> Tactic.unroll 30]
+
+(* Arithmetic identity for |p| = 2.
+   At |p|=2, a>b means a=2 so all of p is in e. *)
+
+lemma ballot_gen_rhs_decompose_two (x : int) (rest : int list) (p : int list)
+    (e : int list) =
+  Sets.dlistp p && Sets.sublistp (x :: rest) p
+  && List.length p = 2 && a_count p e > b_count p e
+  ==> ballot_gen_rhs (Sets.remove x p) (Sets.remove x p) e
+      + ballot_gen_rhs rest p e
+      = ballot_gen_rhs (x :: rest) p e
+[@@by
+  [%use Sets.mem_of_sublistp x (x :: rest) p]
+  @> [%use Sets.len_remove x p]
+  @> [%use a_count_remove_in_e p x e]
+  @> [%use b_count_remove p x e]
+  @> [%use size_two_all_in_e p e x]
+  @> [%use len_eq_a_count_plus_b_count p e]
+  @> [%use a_count_nonneg p e]
+  @> [%use b_count_nonneg p e]
+  @> [%use a_count_nonneg (Sets.remove x p) e]
+  @> simplify ()
+  @> generalize (quote_term (a_count (Sets.remove x p) e)) "asub"
+  @> generalize (quote_term (List.length (Sets.remove x p))) "nsub"
+  @> generalize (quote_term (a_count rest e)) "ar"
+  @> generalize (quote_term (List.length rest)) "r"
+  @> generalize (quote_term (a_count p e)) "a"
+  @> generalize (quote_term (List.length p)) "n"
+  @>>| nonlin ()]
+
+(* Arithmetic identity for |p| >= 3 *)
+
+lemma ballot_gen_rhs_decompose_big x rest p e =
+  Sets.dlistp p && Sets.sublistp (x :: rest) p
+  && List.length p >= 3 && a_count p e > b_count p e
+  ==> ballot_gen_rhs (Sets.remove x p) (Sets.remove x p) e
+      + ballot_gen_rhs rest p e
+      = ballot_gen_rhs (x :: rest) p e
+[@@by
+  [%use Sets.mem_of_sublistp x (x :: rest) p]
+  @> [%use Sets.len_remove x p]
+  @> [%use a_count_remove_in_e p x e]
+  @> [%use b_count_remove p x e]
+  @> [%use fact_n_minus_two (List.length p)]
+  @> simplify ()
+  @>>| (generalize (quote_term (Combinations.fact (List.length p - 3))) "f3"
+        @> nonlin ())]
+
+lemma ballot_gen_rhs_decompose x rest p e =
+  Sets.dlistp p && Sets.sublistp (x :: rest) p
+  && List.length p >= 2 && a_count p e > b_count p e
+  ==> ballot_gen_rhs (Sets.remove x p) (Sets.remove x p) e
+      + ballot_gen_rhs rest p e
+      = ballot_gen_rhs (x :: rest) p e
+[@@by
+  [%use ballot_gen_rhs_decompose_two x rest p e]
+  @> [%use ballot_gen_rhs_decompose_big x rest p e]
+  @> auto]
+
+(* Step case, a > b && |p| >= 2 && candidates = x :: rest.
+   Combines num_favs_step_decompose + IHs + ballot_gen_rhs_decompose. *)
+
+lemma ballot_gen_step_main x rest p e =
+  Sets.dlistp p && Sets.sublistp (x :: rest) p
+  && List.length p >= 2 && a_count p e > b_count p e
+  (* IH at (subp, subp) *)
+  && num_favs (perms_aux (Sets.remove x p) (Sets.remove x p)) e
+     = ballot_gen_rhs (Sets.remove x p) (Sets.remove x p) e
+  (* IH at (rest, p) *)
+  && num_favs (perms_aux rest p) e = ballot_gen_rhs rest p e
+  ==> num_favs (perms_aux (x :: rest) p) e = ballot_gen_rhs (x :: rest) p e
+[@@by
+  [%use num_favs_step_decompose x rest p e]
+  @> [%use ballot_gen_rhs_decompose x rest p e]
+  @> crush]
+
+(* pa_scheme always returns true, very useful fact! *)
+
+lemma pa_scheme_always candidates p =
+  pa_scheme candidates p = true
+[@@by induction ~id:[%id pa_scheme] () @>>| auto]
+
+(* Base case of ballot_gen: 
+    candidates = []. 
+    num_favs = 0 = ballot_gen_rhs [] p e *)
+
+lemma ballot_gen_rhs_empty p e =
+  ballot_gen_rhs [] p e = 0
+[@@by auto]
+
+lemma perms_aux_nil_p p =
+  perms_aux [] p = []
+[@@by auto]
+
+lemma ballot_gen_base candidates p e =
+  Sets.dlistp p && candidates = []
+  ==> num_favs (perms_aux candidates p) e = ballot_gen_rhs candidates p e
+      && pa_scheme candidates p
+[@@by
+  [%use ballot_gen_rhs_empty p e]
+  @> [%use perms_aux_nil_p p]
+  @> auto]
+
+lemma ballot_gen candidates p e =
+  Sets.dlistp p && Sets.sublistp candidates p
+  ==> (num_favs (perms_aux candidates p) e = ballot_gen_rhs candidates p e)
+      && pa_scheme candidates p
+[@@by induction ~id:[%id pa_scheme] ()
+  @>| [(* base: candidates = [] *)
+       [%use ballot_gen_base candidates p e]
+       @> [%use pa_scheme_always candidates p]
+       @> crush;
+       (* step: candidates = hd :: tl *)
+       [%use pa_scheme_always candidates p]
+       @> [%cases a_count p e > b_count p e]
+       @>| [(* a > b *)
+            [%cases List.length p = 1]
+            @>| [(* |p| = 1, a > b *)
+                 [%use num_favs_perms_aux_size_one candidates p e] @> crush;
+                 (* |p| >= 2, a > b *)
+                 [%use ballot_gen_step_main (List.hd candidates) (List.tl candidates) p e]
+                 @> [%use sublistp_cons_sublistp_tl (List.hd candidates) (List.tl candidates) p]
+                 @> [%use Sets.mem_of_sublistp (List.hd candidates) candidates p]
+                 @> [%use Sets.dlistp_remove (List.hd candidates) p]
+                 @> [%use sublistp_self (Sets.remove (List.hd candidates) p)]
+                 @> [%use sublistp_self p]
+                 @> auto];
+            (* a <= b *)
+            [%use num_favs_zero_perms_aux candidates p e] @> crush]]]
+
+(* ============================================================
+   Some annoying helpers...
+   ============================================================ *)
+
+lemma len_one_split x a b =
+  List.length x = 1
+  && a >= 0 && b >= 0
+  && List.length x = a + b
+  ==>
+  (a=0 || b=0) && (a=1 || b=1)
+[@@by auto]
+
+lemma a_count_psd x y =
+  a_count x y >= 0
+[@@by auto] [@@rw] [@@fc]
+
+lemma b_count_psd x y =
+  b_count x y >= 0
+[@@by auto] [@@rw] [@@fc]
+
+lemma len_1_id x =
+  List.length x = 1
+  ==>
+  (x = [List.hd x])
+[@@by auto]
+
+(* Non-empty list has length >= 1 *)
+lemma len_cons_ge_1 (p : 'a list) =
+  p <> [] ==> List.length p >= 1
+[@@by auto] [@@fc]
+
+(* fact(n) = n * (n-1) * fact(n-2) for n >= 2 *)
+
+lemma fact_split n =
+  n >= 2 ==> Combinations.fact n = n * (n - 1) * Combinations.fact (n - 2)
+[@@by auto]
+
+(* Pure algebraic identity at the heart of ballot_theorem:
+   (f * (n * (1 - n + 2a) - 2a)) * n = (2a - n) * n * (n - 1) * f.
+   After substituting f = fact(n-2), the RHS becomes (2a - n) * fact(n). *)
+
+lemma ballot_arith_core n a f =
+  (f * (n * (1 - n + 2*a) - 2*a)) * n = (2*a - n) * n * (n - 1) * f
+[@@by nonlin ()]
+
+(* Combines fact_split and ballot_arith_core: with H3's form for num_favs,
+   multiplying by n gives (2a - n) * fact(n). *)
+
+lemma ballot_arith n a =
+  n >= 2
+  ==> (Combinations.fact (n - 2) * (n * (1 - n + 2*a) - 2*a)) * n
+      = (2*a - n) * Combinations.fact n
+[@@by
+  [%use fact_split n]
+  @> [%use ballot_arith_core n a (Combinations.fact (n - 2))]
+  @> nonlin ()]
+
+(* At last, our main theorem!
+
+   In an election where candidate A gets a votes and candidate B gets
+   b votes with a > b, the probability that A stays strictly ahead
+   throughout the count is (a - b) / (a + b).
+
+   That is, the number of favorable orderings of the electorate
+   equals (a - b) * (n - 1)! where n = a + b; equivalently,
+
+      num_favs (perms p) e * n = (a - b) * n!
+
+   where p is the electorate (dlist of voters), e is the set of
+   A-supporters, a = a_count p e, b = b_count p e, n = |p|.
+ *)
+
+theorem ballot_theorem (p : int list) e =
+  Sets.dlistp p
+  ==> num_favs (perms p) e * List.length p
+      = (if a_count p e > b_count p e
+         then a_count p e - b_count p e
+         else 0)
+        * Combinations.fact (List.length p)
+[@@by
+  [%cases p = []]
+  @>| [crush;
+       [%use ballot_gen p p e]
+       @> [%use sublistp_self p]
+       @> [%use len_eq_a_count_plus_b_count p e]
+       @> [%cases List.length p = 1]
+       @>| [[%use len_one_split p (a_count p e) (b_count p e)]
+             @> [%use a_count_psd p e]
+             @> [%use b_count_psd p e]
+             @> [%use len_1_id p]
+             @> [%replace p]
+             @> simplify ()
+            ;
+            [%use ballot_arith (List.length p) (a_count p e)]
+            @> [%use len_cons_ge_1 p]
+            @> simplify ()
+            @> generalize (quote_term (Combinations.fact (List.length p))) "fn"
+            @> generalize (quote_term (Combinations.fact (List.length p - 2))) "fn2"
+            @> generalize (quote_term (num_favs (perms_aux p p) e)) "nf"
+            @> generalize (quote_term (a_count p e)) "a"
+            @> generalize (quote_term (List.length p)) "n"
+            @>>| nonlin ()
+            ]]]
