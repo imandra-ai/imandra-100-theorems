@@ -4,7 +4,7 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **29/100**:
+Currently, we have proven **30/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
@@ -27,6 +27,7 @@ Currently, we have proven **29/100**:
 69\. [Greatest Common Divisor Algorithm](#thm-69)  
 73\. [Ascending or Descending Sequences (Erdos-Szekeres)](#thm-73)  
 74\. [Principle of Mathematical Induction](#thm-74)  
+77\. [Sum of Kth Powers (Faulhaber's Formula)](#thm-77)  
 78\. [Cauchy-Schwarz Inequality](#thm-78)  
 80\. [The Fundamental Theorem of Arithmetic](#thm-80)  
 85\. [Divisibility by 3 Rule](#thm-85)  
@@ -583,6 +584,32 @@ axiom inductive prop n =
 
 theorem induction prop n =
   n >= 0 ==> prop n
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-77"></a>
+## 77. Sum of Kth Powers (Faulhaber's Formula)
+
+[Source: src/sum_kth_powers.iml](src/sum_kth_powers.iml)
+
+*Statement (informal):*
+
+For all $n \ge 0$ and all $m \ge 0$,
+$$(m+1)\,\sum_{k=1}^{n} k^m \;=\; B_{m+1}(n+1) - B_{m+1}(1),$$
+where $B_j(x)$ is the $j$-th Bernoulli polynomial (with the convention $B_1 = -\tfrac{1}{2}$).
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem faulhaber n m =
+  n >= 0 && m >= 0
+  ==> Real.of_int (m + 1) *. sum_pow_r n m
+       = bernpoly (m + 1) (Real.of_int (n + 1))
+         -. bernpoly (m + 1) 1.0
 ```
 </details>
 

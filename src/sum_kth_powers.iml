@@ -1,0 +1,815 @@
+(* Sum of Kth Powers — Faulhaber's Formula in Imandra.
+   Theorem 77 in the 100 Theorems list.
+
+   We prove the general closed form for all n >= 0 and all m >= 0:
+
+     (m + 1) * sum_{k=1..n} k^m
+        =  B_{m+1}(n+1) - B_{m+1}(1)
+
+   where B_j(x) is the jth Bernoulli polynomial.
+
+   Equivalently (dividing by m+1):
+     sum_{k=1..n} k^m = (B_{m+1}(n+1) - B_{m+1}(1)) / (m+1).
+
+   Grant Passmore, Imandra
+ *)
+
+[@@@import "binomial.iml"]
+
+(* ============================================================
+   Real power function  x^n  (x real, n nonneg int)
+   ============================================================ *)
+
+let rec real_pow (x : real) (n : int) : real =
+  if n <= 0 then 1.0 else x *. real_pow x (n - 1)
+[@@measure Ordinal.of_int (max 0 n)]
+
+(* Real-valued binomial coefficient *)
+let choose_r (n : int) (k : int) : real =
+  Real.of_int (Binomial.choose n k)
+
+(* ============================================================
+   Bernoulli numbers B_n via the defining recurrence:
+     B_0 = 1
+     For n >= 1: sum_{k=0}^n C(n+1, k) * B_k = 0
+       ==> B_n = -(1/(n+1)) * sum_{k=0}^{n-1} C(n+1, k) * B_k
+   We tabulate by building the list [B_0; B_1; ...; B_n] incrementally,
+   then project.  This avoids mutual recursion.
+   We use the convention giving B_1 = -1/2.
+   ============================================================ *)
+
+(* weighted_list_sum n i bs
+     = sum_{j=0}^{len bs - 1} C(n, i + j) * bs[j] *)
+let rec weighted_list_sum (n : int) (i : int) (bs : real list) : real =
+  match bs with
+  | [] -> 0.0
+  | b :: rest ->
+    choose_r n i *. b +. weighted_list_sum n (i + 1) rest
+
+(* bernoulli_list n = [B_0; B_1; ...; B_n] *)
+let rec bernoulli_list (n : int) : real list =
+  if n <= 0 then [1.0]
+  else
+    let prev = bernoulli_list (n - 1) in
+    let b_n =
+      -. weighted_list_sum (n + 1) 0 prev
+      /. Real.of_int (n + 1)
+    in
+    prev @ [b_n]
+[@@measure Ordinal.of_int (max 0 n)]
+
+(* The n-th Bernoulli number (for n >= 0).
+   For n >= 1, B_n = -(1/(n+1)) * sum_{k=0}^{n-1} C(n+1, k) * B_k,
+   where the prior B_0..B_{n-1} are taken from bernoulli_list (n-1).
+   By construction bernoulli_list n = bernoulli_list (n-1) @ [bernoulli n],
+   so bernoulli_list n = [bernoulli 0; bernoulli 1; ...; bernoulli n]. *)
+
+let bernoulli (n : int) : real =
+  if n <= 0 then 1.0
+  else
+    -. weighted_list_sum (n + 1) 0 (bernoulli_list (n - 1))
+    /. Real.of_int (n + 1)
+
+(* Indexed list lookup (default 0.0 on out-of-range) *)
+
+let rec list_nth_real (xs : real list) (i : int) : real =
+  match xs with
+  | [] -> 0.0
+  | x :: rest -> if i <= 0 then x else list_nth_real rest (i - 1)
+
+(* Sanity: first few Bernoulli numbers *)
+eval bernoulli 0   (* expect 1        *)
+eval bernoulli 1   (* expect -1/2     *)
+eval bernoulli 2   (* expect 1/6      *)
+eval bernoulli 3   (* expect 0        *)
+eval bernoulli 4   (* expect -1/30    *)
+eval bernoulli 5   (* expect 0        *)
+eval bernoulli 6   (* expect 1/42     *)
+
+(* ============================================================
+   Bernoulli polynomials:
+     B_n(x) = sum_{k=0}^n C(n, k) * B_k * x^{n-k}
+   ============================================================ *)
+
+(* bernpoly_aux n k x = sum_{j=0}^k C(n, j) * B_j * x^{n-j} *)
+
+let rec bernpoly_aux (n : int) (k : int) (x : real) : real =
+  if k < 0 then 0.0
+  else
+    choose_r n k *. bernoulli k *. real_pow x (n - k)
+    +. bernpoly_aux n (k - 1) x
+[@@measure Ordinal.of_int (max 0 (k + 1))]
+
+let bernpoly (n : int) (x : real) : real =
+  bernpoly_aux n n x
+
+eval bernpoly 0 0.0   (* B_0(0) = 1         *)
+eval bernpoly 1 0.0   (* B_1(0) = -1/2      *)
+eval bernpoly 2 0.0   (* B_2(0) = 1/6       *)
+eval bernpoly 2 1.0   (* B_2(1) = 1/6       *)
+eval bernpoly 3 1.0   (* B_3(1) = 1/2       *)
+
+(* ============================================================
+   sum_pow_r n m = 1^m + 2^m + ... + n^m   (real-valued)
+   ============================================================ *)
+
+let rec sum_pow_r (n : int) (m : int) : real =
+  if n <= 0 then 0.0
+  else real_pow (Real.of_int n) m +. sum_pow_r (n - 1) m
+[@@measure Ordinal.of_int (max 0 n)]
+
+eval sum_pow_r 3 2       (* 1 + 4 + 9 = 14       *)
+eval sum_pow_r 4 3       (* 1 + 8 + 27 + 64 = 100 *)
+eval sum_pow_r 5 1       (* 15                    *)
+
+(* ============================================================
+   Main theorem: Faulhaber's formula via Bernoulli polynomials.
+     (m + 1) * sum_{k=1..n} k^m  =  B_{m+1}(n+1) - B_{m+1}(1)
+   ============================================================ *)
+
+(* ============================================================
+   PHASE 1: real_pow basics
+   ============================================================ *)
+
+lemma real_pow_0 (x : real) = real_pow x 0 = 1.0
+[@@by auto]
+
+lemma real_pow_succ (x : real) (n : int) =
+  n >= 0 ==> real_pow x (n + 1) = x *. real_pow x n
+[@@by auto]
+
+lemma real_pow_succ_l (x : real) (n : int) =
+  n >= 0 ==> x *. real_pow x n = real_pow x (n + 1)
+[@@by auto]
+
+lemma real_pow_one (n : int) =
+  n >= 0 ==> real_pow 1.0 n = 1.0
+[@@by auto]
+
+lemma real_pow_add (x : real) (a : int) (b : int) =
+  a >= 0 && b >= 0
+  ==> real_pow x (a + b) = real_pow x a *. real_pow x b
+[@@by induction ~id:[%id real_pow] () @>>| auto]
+
+(* ============================================================
+   PHASE 2: real-valued binomial theorem
+     (x + 1)^n = sum_{k=0}^n C(n, k) * x^k
+   ============================================================ *)
+
+(* r_binom_sum n k x = sum_{j=0}^k C(n, j) * x^j *)
+
+let rec r_binom_sum (n : int) (k : int) (x : real) : real =
+  if k < 0 then 0.0
+  else choose_r n k *. real_pow x k +. r_binom_sum n (k - 1) x
+[@@measure Ordinal.of_int (max 0 (k + 1))]
+
+(* Pascal-like identity for r_binom_sum *)
+
+lemma r_binom_sum_pascal n k x =
+  n >= 0 && k >= 0
+  ==> r_binom_sum (n + 1) k x
+      = r_binom_sum n k x +. x *. r_binom_sum n (k - 1) x
+[@@by
+  induction ~id:[%id r_binom_sum] ()
+  @>| [auto;
+       intros
+       @> [%cases (0 < k && k <= n)]
+       @>| [intros
+            @> [%use Binomial.pascal (n + 1) k]
+            @> auto;
+            intros
+            @> [%use Binomial.choose_out_of_range n k]
+            @> [%use Binomial.choose_out_of_range n (k - 1)]
+            @> [%use Binomial.choose_out_of_range (n + 1) k]
+            @> [%use Binomial.choose_edges n]
+            @> auto]]]
+
+(* r_binom_sum n (n+1) x = r_binom_sum n n x  since C(n, n+1) = 0 *)
+
+lemma r_binom_sum_extend_top n x =
+  n >= 0 ==> r_binom_sum n (n + 1) x = r_binom_sum n n x
+[@@by
+  [%use Binomial.choose_out_of_range n (n + 1)]
+  @> auto]
+
+(* Real binomial theorem: (x + 1)^n = sum_{k=0}^n C(n, k) * x^k *)
+
+theorem r_binom_theorem x n =
+  n >= 0 ==> real_pow (x +. 1.0) n = r_binom_sum n n x
+[@@by
+  induction ()
+  @>| [auto;
+       intros
+       @> [%use real_pow_succ (x +. 1.0) (n - 1)]
+       @> [%use r_binom_sum_extend_top (n - 1) x]
+       @> [%use r_binom_sum_pascal (n - 1) n x]
+       @> auto]]
+
+(* ============================================================
+   PHASE 3: weighted_list_sum and bernoulli_list structure
+   ============================================================ *)
+
+(* Length of bernoulli_list: |bernoulli_list n| = n + 1 for n >= 0. *)
+
+lemma length_bernoulli_list n =
+  n >= 0 ==> List.length (bernoulli_list n) = n + 1
+[@@by auto]
+
+(* weighted_list_sum distributes over append: appending [y] at position |xs|
+   adds one term with coefficient C(n, i + |xs|). *)
+
+lemma weighted_list_sum_append_last n i xs y =
+  weighted_list_sum n i (xs @ [y])
+  = weighted_list_sum n i xs
+    +. choose_r n (i + List.length xs) *. y
+[@@by induction () @>>| auto]
+
+(* list_nth_real on an appended-last list *)
+
+lemma list_nth_real_append_last xs y i =
+  i >= 0
+  ==> list_nth_real (xs @ [y]) i
+      = (if i < List.length xs then list_nth_real xs i else
+         if i = List.length xs then y else 0.0)
+[@@by induction () @>>| auto]
+
+(* Incremental structure: bernoulli_list n extends bernoulli_list (n-1)
+   by the newly-computed B_n. *)
+
+lemma bernoulli_list_cons_last n =
+  n >= 1
+  ==> bernoulli_list n = bernoulli_list (n - 1) @ [bernoulli n]
+[@@by auto]
+
+(* Projection: the j-th element of bernoulli_list n is bernoulli j, for j <= n. *)
+
+lemma list_nth_bernoulli_list n j =
+  n >= 0 && j >= 0 && j <= n
+  ==> list_nth_real (bernoulli_list n) j = bernoulli j
+[@@by
+  induction ()
+  @>| [auto;
+       intros
+       @> [%use bernoulli_list_cons_last n]
+       @> [%use length_bernoulli_list (n - 1)]
+       @> [%use list_nth_real_append_last
+             (bernoulli_list (n - 1)) (bernoulli n) j]
+       @> auto]]
+
+(* ============================================================
+   PHASE 4: Bernoulli recurrence
+     sum_{k=0}^n C(n+1, k) * B_k = 0   for n >= 1.
+   ============================================================ *)
+
+(* Pure sum: bern_weighted_sum n K = sum_{k=0}^K C(n, k) * B_k *)
+
+let rec bern_weighted_sum (n : int) (kk : int) : real =
+  if kk < 0 then 0.0
+  else choose_r n kk *. bernoulli kk +. bern_weighted_sum n (kk - 1)
+[@@measure Ordinal.of_int (max 0 (kk + 1))]
+
+(* Convert list-based weighted sum (at offset 0) to pure Bernoulli sum. *)
+
+lemma weighted_list_sum_bernoulli_eq n kk =
+  kk >= 0
+  ==> weighted_list_sum n 0 (bernoulli_list kk) = bern_weighted_sum n kk
+[@@by
+  induction ()
+  @>| [auto;
+       intros
+       @> [%use bernoulli_list_cons_last kk]
+       @> [%use weighted_list_sum_append_last n 0
+             (bernoulli_list (kk - 1)) (bernoulli kk)]
+       @> [%use length_bernoulli_list (kk - 1)]
+       @> auto]]
+
+(* Helper induction function for proving choose_near_top on n. *)
+
+let rec choose_ind (n : int) : int =
+  if n <= 0 then 0 else choose_ind (n - 1)
+[@@measure Ordinal.of_int (max 0 n)]
+
+(* C(n, n-1) = n for n >= 1 — needed to expand C(n+1, n) = n+1. *)
+
+lemma choose_near_top n =
+  n >= 1 ==> Binomial.choose n (n - 1) = n
+[@@by
+  induction ~id:[%id choose_ind] ()
+  @>| [auto;
+       intros
+       @> [%use Binomial.pascal n (n - 1)]
+       @> [%use Binomial.choose_edges (n - 1)]
+       @> auto]]
+
+(* Bernoulli recurrence: sum_{k=0}^n C(n+1, k) B_k = 0 for n >= 1. *)
+
+theorem bernoulli_recurrence n =
+  n >= 1 ==> bern_weighted_sum (n + 1) n = 0.0
+[@@by
+  intros
+  @> [%expand bern_weighted_sum (n + 1) n]
+  @> [%expand bernoulli n]
+  @> [%use weighted_list_sum_bernoulli_eq (n + 1) (n - 1)]
+  @> [%use choose_near_top (n + 1)]
+  @> [%use Binomial.choose_out_of_range n (-1)]
+  @> simplify ()
+  @> generalize (quote_term (bern_weighted_sum (n + 1) (n - 1))) "s"
+  @> generalize (quote_term (Real.of_int (n + 1))) "np1"
+  @> nonlin ()]
+
+(* real_pow 1.0 n = 1.0 for all n (needed to relate bernpoly 
+   at x=1 to bern_weighted_sum). *)
+
+lemma real_pow_one_all (n : int) = real_pow 1.0 n = 1.0
+[@@by auto] [@@rw]
+
+(* bernpoly_aux m k 1.0 = bern_weighted_sum m k *)
+
+lemma bernpoly_aux_at_one m kk =
+  bernpoly_aux m kk 1.0 = bern_weighted_sum m kk
+[@@by induction ~id:[%id bernpoly_aux] () @>>| auto]
+
+(* ============================================================
+   PHASE 5: Key telescoping identity
+     bernpoly (m+1) (x+1) - bernpoly (m+1) x  =  (m+1) * x^m
+   ============================================================ *)
+
+(* (x+1)^n - x^n = r_binom_sum n (n-1) x, since (x+1)^n = r_binom_sum n n x
+   and r_binom_sum n n x = C(n,n) x^n + r_binom_sum n (n-1) x = x^n + ...  *)
+
+lemma pow_shift_diff n x =
+  n >= 0
+  ==> real_pow (x +. 1.0) n -. real_pow x n = r_binom_sum n (n - 1) x
+[@@by
+  intros
+  @> [%use r_binom_theorem x n]
+  @> [%use Binomial.choose_edges n]
+  @> auto]
+
+(* ============================================================
+   Bernpoly split: bernpoly (m+1) y = bernpoly_aux (m+1) m y + B_{m+1}
+   for m >= 0.
+   The i = m+1 term only contributes 0^0 = 1 at y=0 but in the general
+   sum appears as B_{m+1} * y^0 = B_{m+1}.
+   ============================================================ *)
+
+lemma bernpoly_split m y =
+  m >= 0
+  ==> bernpoly (m + 1) y
+      = bernpoly_aux (m + 1) m y +. bernoulli (m + 1)
+[@@by
+  intros
+  @> [%expand bernpoly (m + 1) y]
+  @> [%expand bernpoly_aux (m + 1) (m + 1) y]
+  @> [%use Binomial.choose_edges (m + 1)]
+  @> auto]
+
+(* diff_expanded m k x
+     = sum_{i=0}^k C(m+1, i) B_i * ((x+1)^{m+1-i} - x^{m+1-i})  *)
+
+let rec diff_expanded (m : int) (k : int) (x : real) : real =
+  if k < 0 then 0.0
+  else
+    choose_r (m + 1) k *. bernoulli k
+    *. (real_pow (x +. 1.0) (m + 1 - k) -. real_pow x (m + 1 - k))
+    +. diff_expanded m (k - 1) x
+[@@measure Ordinal.of_int (max 0 (k + 1))]
+
+(* bernpoly_aux (m+1) k (x+1) - bernpoly_aux (m+1) k x = diff_expanded m k x *)
+
+lemma bernpoly_aux_diff m k x =
+  bernpoly_aux (m + 1) k (x +. 1.0) -. bernpoly_aux (m + 1) k x
+  = diff_expanded m k x
+[@@by induction ~id:[%id bernpoly_aux] () @>>| auto]
+
+(* After the k = m+1 boundary (where (x+1)^0 - x^0 = 0), the bernpoly diff
+   reduces to diff_expanded m m x. *)
+
+lemma bernpoly_diff_eq_expanded m x =
+  m >= 0
+  ==>    bernpoly (m + 1) (x +. 1.0) -. bernpoly (m + 1) x
+       = diff_expanded m m x
+[@@by
+  intros
+  @> [%use bernpoly_split m (x +. 1.0)]
+  @> [%use bernpoly_split m x]
+  @> [%use bernpoly_aux_diff m m x]
+  @> auto]
+
+(* ============================================================
+   The swapped sum.  After swapping the order of summation in
+     sum_{i=0}^m  C(m+1, i) * B_i * [sum_{j=0}^{m-i} C(m+1-i, j) * x^j]
+   and applying the trinomial identity
+     C(m+1, i) * C(m+1-i, j) = C(m+1, j) * C(m+1-j, i)
+   we obtain
+     sum_{j=0}^m  x^j * C(m+1, j) * bern_weighted_sum (m+1-j) (m-j).
+
+   The outer index j increases; by the Bernoulli recurrence the factor
+     bern_weighted_sum (m+1-j) (m-j)
+   vanishes for j < m and equals 1 at j = m, so the whole sum collapses
+   to (m+1) * x^m.
+   ============================================================ *)
+
+(* tele_swapped m j x = 
+     sum_{i=j}^m x^i * C(m+1, i) * bern_weighted_sum (m+1-i) (m-i) *)
+
+let rec tele_swapped (m : int) (j : int) (x : real) : real =
+  if j > m then 0.0
+  else
+    real_pow x j *. choose_r (m + 1) j
+    *. bern_weighted_sum (m + 1 - j) (m - j)
+    +. tele_swapped m (j + 1) x
+[@@measure Ordinal.of_int (max 0 (m - j + 1))]
+
+(* At j = m, tele_swapped m m x = (m+1) * x^m. *)
+
+lemma tele_swapped_at_m m x =
+  m >= 0 ==> tele_swapped m m x = Real.of_int (m + 1) *. real_pow x m
+[@@by
+  intros
+  @> [%use choose_near_top (m + 1)]
+  @> [%use Binomial.choose_edges 1]
+  @> simplify ()
+  @> auto]
+
+(* The collapse: starting from any 0 <= j <= m, 
+    tele_swapped m j x = (m+1) x^m. *)
+
+lemma tele_swapped_collapse m j x =
+  0 <= j && j <= m
+  ==> tele_swapped m j x = Real.of_int (m + 1) *. real_pow x m
+[@@by
+  induction ~id:[%id tele_swapped] ()
+  @>| [auto;
+       intros
+       @> [%cases (j < m)]
+       @>| [(* j < m: bern_weighted_sum (m+1-j) (m-j) = 0 *)
+            intros
+            @> [%use bernoulli_recurrence (m - j)]
+            @> auto;
+            (* j = m *)
+            intros
+            @> [%use tele_swapped_at_m m x]
+            @> auto]]]
+
+(* ============================================================
+   Trinomial identity via factorials:
+     fact k * fact (n-k) * C(n, k) = fact n   (for 0 <= k <= n)
+   ============================================================ *)
+
+let rec fact (n : int) : int =
+  if n <= 0 then 1 else n * fact (n - 1)
+[@@measure Ordinal.of_int (max 0 n)]
+
+lemma fact_pos n = fact n >= 1
+[@@by
+  induction ~id:[%id fact] ()
+  @>| [auto;
+       intros @> [%expand fact n] @> nonlin ()]]
+
+lemma fact_succ n = n >= 1 ==> fact n = n * fact (n - 1)
+[@@by auto]
+
+(* Factorial characterization of binomial coefficient:
+     C(n, k) * k! * (n-k)! = n!   for 0 <= k <= n.     *)
+
+lemma choose_fact_char n k =
+  0 <= k && k <= n
+  ==> Binomial.choose n k * fact k * fact (n - k) = fact n
+[@@by
+  induction ~id:[%id Binomial.choose] ()
+  @>| [auto;
+       intros
+       @> [%cases (k = 0 || k = n)]
+       @>| [auto;
+            intros
+            @> [%use Binomial.pascal n k]
+            @> [%use fact_succ k]
+            @> [%use fact_succ (n - k)]
+            @> [%use fact_succ n]
+            @> nonlin ()]]]
+
+(* Trinomial identity (integer):
+     C(m+1, i) * C(m+1-i, j) = C(m+1, j) * C(m+1-j, i)   
+       for i+j <= m+1 *)
+
+lemma trinomial m i j =
+  m >= 0 && 0 <= i && 0 <= j && i + j <= m + 1
+  ==> Binomial.choose (m + 1) i * Binomial.choose (m + 1 - i) j
+      = Binomial.choose (m + 1) j * Binomial.choose (m + 1 - j) i
+[@@by
+  intros
+  @> [%use choose_fact_char (m + 1) i]
+  @> [%use choose_fact_char (m + 1 - i) j]
+  @> [%use choose_fact_char (m + 1) j]
+  @> [%use choose_fact_char (m + 1 - j) i]
+  @> [%use fact_pos i]
+  @> [%use fact_pos j]
+  @> [%use fact_pos (m + 1 - i - j)]
+  @> [%use fact_pos (m + 1)]
+  @> nonlin ()]
+
+(* Real-valued trinomial *)
+
+lemma trinomial_r m i j =
+  m >= 0 && 0 <= i && 0 <= j && i + j <= m + 1
+  ==> choose_r (m + 1) i *. choose_r (m + 1 - i) j
+      = choose_r (m + 1) j *. choose_r (m + 1 - j) i
+[@@by
+  intros
+  @> [%use trinomial m i j]
+  @> simplify ()
+  @> nonlin ()]
+
+(* ============================================================
+   PHASE 5: diff_expanded m m x = tele_swapped m 0 x.
+
+   Both are sums over the triangle { (i, j) : i, j >= 0, i+j <= m }
+   of the "cell" value C(m+1, i) * C(m+1-i, j) * B_i * x^j, but they
+   iterate in different orders (i-first vs j-first), with the
+   trinomial identity bridging the coefficient forms.
+
+   Canonical triangle sum enumerated cell-by-cell in lex order.
+   ============================================================ *)
+
+(* Cell value at (i, j) for fixed m. *)
+
+let cell (m : int) (i : int) (j : int) (x : real) : real =
+  choose_r (m + 1) i *. choose_r (m + 1 - i) j
+  *. bernoulli i *. real_pow x j
+
+(* inner_row m i K x = sum_{j=0}^K cell m i j x
+    (a row of the i-first sum) *)
+
+let rec inner_row (m : int) (i : int) (kk : int) (x : real) : real =
+  if kk < 0 then 0.0
+  else cell m i kk x +. inner_row m i (kk - 1) x
+[@@measure Ordinal.of_int (max 0 (kk + 1))]
+
+(* inner_col m j K x = sum_{i=0}^K cell m i j x
+    (a column of the j-first sum) *)
+
+let rec inner_col (m : int) (j : int) (kk : int) (x : real) : real =
+  if kk < 0 then 0.0
+  else cell m kk j x +. inner_col m j (kk - 1) x
+[@@measure Ordinal.of_int (max 0 (kk + 1))]
+
+(* i_first_sum m n x = sum_{i=0}^n inner_row m i (m - i) x *)
+
+let rec i_first_sum (m : int) (n : int) (x : real) : real =
+  if n < 0 then 0.0
+  else inner_row m n (m - n) x +. i_first_sum m (n - 1) x
+[@@measure Ordinal.of_int (max 0 (n + 1))]
+
+(* j_first_sum m n x = sum_{j=0}^n inner_col m j (m - j) x *)
+
+let rec j_first_sum (m : int) (n : int) (x : real) : real =
+  if n < 0 then 0.0
+  else inner_col m n (m - n) x +. j_first_sum m (n - 1) x
+[@@measure Ordinal.of_int (max 0 (n + 1))]
+
+(* Relate inner_row to r_binom_sum: factor out the 
+   C(m+1,i) B_i constant. *)
+
+lemma inner_row_factor m i kk x =
+  inner_row m i kk x
+  = choose_r (m + 1) i *. bernoulli i *. r_binom_sum (m + 1 - i) kk x
+[@@by induction ~id:[%id inner_row] () @>>| auto]
+
+(* General: relate diff_expanded m n x to 
+    i_first_sum m n x for any 0 <= n <= m *)
+
+lemma diff_expanded_eq_i_first_gen m n x =
+  m >= 0 && 0 <= n && n <= m
+  ==> diff_expanded m n x = i_first_sum m n x
+[@@by
+  induction ~id:[%id diff_expanded] ()
+  @>| [auto;
+       intros
+       @> [%expand diff_expanded m n x]
+       @> [%expand i_first_sum m n x]
+       @> [%use pow_shift_diff (m + 1 - n) x]
+       @> [%use inner_row_factor m n (m - n) x]
+       @> auto]]
+
+lemma diff_expanded_eq_i_first m x =
+  m >= 0 ==> diff_expanded m m x = i_first_sum m m x
+[@@by [%use diff_expanded_eq_i_first_gen m m x] @> auto]
+
+(* tele_swapped in terms of j_first_sum, via trinomial_r and bern_weighted_sum expansion. *)
+(* col-sum with coefficients swapped via trinomial = the inner sum inside tele_swapped *)
+
+lemma inner_col_as_bern m j kk x =
+  m >= 0 && 0 <= j && j <= m && 0 <= kk && kk <= m - j
+  ==> inner_col m j kk x
+      = choose_r (m + 1) j *. real_pow x j *. bern_weighted_sum (m + 1 - j) kk
+[@@by
+  induction ~id:[%id inner_col] ()
+  @>| [auto;
+       intros
+       @> [%expand inner_col m j kk x]
+       @> [%expand bern_weighted_sum (m + 1 - j) kk]
+       @> [%use trinomial_r m kk j]
+       @> auto]]
+
+(* Generalized: for any 0 <= j <= m, tele_swapped m j x is the 
+    j-first partial sum from j upward. *)
+
+lemma tele_swapped_eq_j_first_gen m j x =
+  m >= 0 && 0 <= j && j <= m
+  ==>   tele_swapped m j x
+      = j_first_sum m m x -. j_first_sum m (j - 1) x
+[@@by
+  induction ~id:[%id tele_swapped] ()
+  @>| [auto;
+       intros
+       @> [%cases (j < m)]
+       @>| [(* j < m: use IH (at j+1), expand tele_swapped, j_first_sum *)
+            intros
+            @> [%expand tele_swapped m j x]
+            @> [%use inner_col_as_bern m j (m - j) x]
+            @> [%subgoal j_first_sum m j x
+                         = inner_col m j (m - j) x +. j_first_sum m (j - 1) x]
+            @>| [auto;
+                 [%expand j_first_sum m j x] @> auto];
+            (* j = m: compute directly *)
+            intros
+            @> [%expand tele_swapped m j x]
+            @> [%use inner_col_as_bern m j (m - j) x]
+            @> [%subgoal j_first_sum m j x
+                         = inner_col m j (m - j) x +. j_first_sum m (j - 1) x]
+            @>| [auto;
+                 [%expand j_first_sum m j x] @> auto]]]]
+
+lemma tele_swapped_eq_j_first m x =
+  m >= 0 ==> tele_swapped m 0 x = j_first_sum m m x
+[@@by [%use tele_swapped_eq_j_first_gen m 0 x] @> auto]
+
+(* ============================================================
+   Generic sum-swap over a triangle, via higher-order functions.
+
+   Given any f : int -> int -> real, the sum over
+     { (i, j) : 0 <= i, 0 <= j, i + j <= m }
+   is invariant under iteration order (i-first vs j-first).
+
+   Proof: induction on m.  Both iterations satisfy the decomposition
+     Σ over m-triangle = Σ over (m-1)-triangle + Σ over diagonal m
+   ============================================================ *)
+
+(* Generic row sum: Σ_{j=0}^k f i j *)
+
+let rec gen_row (f : int -> int -> real) (i : int) (k : int) : real =
+  if k < 0 then 0.0 else f i k +. gen_row f i (k - 1)
+[@@measure Ordinal.of_int (max 0 (k + 1))]
+
+(* Generic column sum: Σ_{i=0}^k f i j *)
+
+let rec gen_col (f : int -> int -> real) (j : int) (k : int) : real =
+  if k < 0 then 0.0 else f k j +. gen_col f j (k - 1)
+[@@measure Ordinal.of_int (max 0 (k + 1))]
+
+(* Generic i-first triangle sum: Σ_{i=0}^n gen_row f i (m - i) *)
+
+let rec gen_ij (f : int -> int -> real) (m : int) (n : int) : real =
+  if n < 0 then 0.0
+  else gen_row f n (m - n) +. gen_ij f m (n - 1)
+[@@measure Ordinal.of_int (max 0 (n + 1))]
+
+(* Generic j-first triangle sum *)
+
+let rec gen_ji (f : int -> int -> real) (m : int) (n : int) : real =
+  if n < 0 then 0.0
+  else gen_col f n (m - n) +. gen_ji f m (n - 1)
+[@@measure Ordinal.of_int (max 0 (n + 1))]
+
+(* Generic diagonal sum iterated from low-i end: Σ_{i=0}^k f i (s - i) *)
+
+let rec gen_diag (f : int -> int -> real) (s : int) (i : int) : real =
+  if i < 0 then 0.0 else f i (s - i) +. gen_diag f s (i - 1)
+[@@measure Ordinal.of_int (max 0 (i + 1))]
+
+(* Generic diagonal sum iterated from high-i end: Σ_{k'=0}^k f (s - k') k' *)
+
+let rec gen_diag_rev (f : int -> int -> real) (s : int) (k : int) : real =
+  if k < 0 then 0.0 else f (s - k) k +. gen_diag_rev f s (k - 1)
+[@@measure Ordinal.of_int (max 0 (k + 1))]
+
+(* The key decomposition: when we go from an (m-1)-triangle to an m-triangle,
+   we add the cells on diagonal i+j = m.  Both i-first and j-first iterations
+   satisfy this same decomposition, differing only in the order the new
+   diagonal cells are traversed — but the sum is the same. *)
+
+(* Generic row i with longer extent: gen_row f i k = gen_row_ext f i k *)
+(* Observation: gen_row f n (m-n) = f n (m-n) + gen_row f n (m-n-1).
+   If we also had gen_row f n ((m-1)-n) = gen_row f n (m-n-1), we get
+   gen_row f n (m-n) = f n (m-n) + gen_row f n ((m-1)-n). *)
+
+lemma gen_ij_shift f m n =
+  0 <= n && n <= m
+  ==> gen_ij f m n = gen_ij f (m - 1) n +. gen_diag f m n
+[@@by induction ~id:[%id gen_ij] () @>>| auto]
+
+lemma gen_ji_shift f m n =
+  0 <= n && n <= m
+  ==> gen_ji f m n = gen_ji f (m - 1) n +. gen_diag_rev f m n
+[@@by induction ~id:[%id gen_ji] () @>>| auto]
+
+(* Partition lemma: splits the full diagonal into a "gen_diag" prefix
+   (cells 0..k, iterated from k down to 0) and a "gen_diag_rev" suffix
+   (cells k+1..m, iterated from m down to k+1).  The two halves together
+   tile the diagonal exactly once, so sum = gen_diag_rev f m m. *)
+
+lemma gen_diag_partition f m k =
+  0 <= k && k <= m
+  ==>   gen_diag f m k +. gen_diag_rev f m (m - k - 1)
+      = gen_diag_rev f m m
+[@@by induction ~id:[%id gen_diag] () @>>| auto]
+
+(* Specialize at k = m: gen_diag_rev f m (-1) = 0, so 
+    gen_diag f m m = gen_diag_rev f m m. *)
+
+lemma gen_diag_eq_rev f m =
+  m >= 0 ==> gen_diag f m m = gen_diag_rev f m m
+[@@by [%use gen_diag_partition f m m] @> auto]
+
+(* Main: sum-swap over the triangle. Induct on m. *)
+
+lemma sum_swap_gen f m =
+  m >= 0 ==> gen_ij f m m = gen_ji f m m
+[@@by
+  induction ()
+  @>| [auto;
+       intros
+       @> [%use gen_ij_shift f m m]
+       @> [%use gen_ji_shift f m m]
+       @> [%use gen_diag_eq_rev f m]
+       @> auto]]
+
+(* Connect our specific sums to the generic HOF versions via a named helper. *)
+
+let cell_fn (m : int) (x : real) (i : int) (j : int) : real = cell m i j x
+
+lemma inner_row_eq_gen_row m i kk x =
+  inner_row m i kk x = gen_row (cell_fn m x) i kk
+[@@by induction ~id:[%id inner_row] () @>>| auto]
+
+lemma inner_col_eq_gen_col m j kk x =
+  inner_col m j kk x = gen_col (cell_fn m x) j kk
+[@@by induction ~id:[%id inner_col] () @>>| auto]
+
+lemma i_first_eq_gen_ij m n x =
+  i_first_sum m n x = gen_ij (cell_fn m x) m n
+[@@by
+  induction ~id:[%id i_first_sum] ()
+  @>| [auto;
+       intros @> [%use inner_row_eq_gen_row m n (m - n) x] @> auto]]
+
+lemma j_first_eq_gen_ji m n x =
+  j_first_sum m n x = gen_ji (cell_fn m x) m n
+[@@by
+  induction ~id:[%id j_first_sum] ()
+  @>| [auto;
+       intros @> [%use inner_col_eq_gen_col m n (m - n) x] @> auto]]
+
+(* The specific sum-swap we need: 
+    i_first_sum m m x = j_first_sum m m x. *)
+
+lemma i_first_eq_j_first m x =
+  m >= 0 ==> i_first_sum m m x = j_first_sum m m x
+[@@by
+  intros
+  @> [%use i_first_eq_gen_ij m m x]
+  @> [%use j_first_eq_gen_ji m m x]
+  @> [%use sum_swap_gen (cell_fn m x) m]
+  @> auto]
+
+(* The key telescoping identity! *)
+
+lemma bernpoly_telescope m x =
+  m >= 0
+  ==>
+  bernpoly (m + 1) (x +. 1.0) -. bernpoly (m + 1) x
+    = Real.of_int (m + 1) *. real_pow x m
+[@@by
+  intros
+  @> [%use bernpoly_diff_eq_expanded m x]
+  @> [%use diff_expanded_eq_i_first m x]
+  @> [%use i_first_eq_j_first m x]
+  @> [%use tele_swapped_eq_j_first m x]
+  @> [%use tele_swapped_collapse m 0 x]
+  @> auto]
+
+(* Our main theorem at last: Faulhaber's formula for the sum of kth powers! *)
+
+theorem faulhaber n m =
+  n >= 0 && m >= 0
+  ==>
+  Real.of_int (m + 1) *. sum_pow_r n m
+    = bernpoly (m + 1) (Real.of_int (n + 1))
+      -. bernpoly (m + 1) 1.0
+[@@by
+  induction ()
+  @>| [auto;
+       intros
+       @> [%use bernpoly_telescope m (Real.of_int n)]
+       @> auto]]
