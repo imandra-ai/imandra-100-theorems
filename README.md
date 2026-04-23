@@ -598,7 +598,11 @@ theorem induction prop n =
 *Statement (informal):*
 
 For all $n \ge 0$ and all $m \ge 0$,
-$$(m+1)\,\sum_{k=1}^{n} k^m \;=\; B_{m+1}(n+1) - B_{m+1}(1),$$
+
+$$
+(m+1)\,\sum_{k=1}^{n} k^m \;=\; B_{m+1}(n+1) - B_{m+1}(1),
+$$
+
 where $B_j(x)$ is the $j$-th Bernoulli polynomial (with the convention $B_1 = -\tfrac{1}{2}$).
 
 <details open>
