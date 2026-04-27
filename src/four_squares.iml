@@ -1,0 +1,1591 @@
+(* A proof of Lagrange's Four-Square Theorem in Imandra.
+   Theorem 19 in the 100 Theorems list.
+
+   Every non-negative integer is expressible as the sum of four squares:
+     For all n >= 0, there exist a, b, c, d such that
+       n = a^2 + b^2 + c^2 + d^2.
+
+   We follow the classical Lagrange proof: Euler's four-square identity
+   gives multiplicativity, and an infinite-descent argument modulo an
+   odd prime p establishes the prime case.  The composite case follows
+   from the prime case + Euler's identity via prime factorization.
+
+   Grant Passmore, Imandra
+ *)
+
+[@@@import "inf_primes.iml"]
+[@@@import "fta.iml"]
+[@@@import "mod.iml"]
+[@@@import "gcd.iml"]
+[@@@import "sets.iml"]
+
+open Mod.Theorems
+
+(* ============================================================
+   Basic definitions: sum_sq4 and the Euler identity "prod4".
+   ============================================================ *)
+
+(* n = a^2 + b^2 + c^2 + d^2 *)
+let sum_sq4 (a : int) (b : int) (c : int) (d : int) : int =
+  a * a + b * b + c * c + d * d
+
+(* Quaternion-multiplication form of (a,b,c,d) * (e,f,g,h) *)
+let prod4_1 (a : int) (b : int) (c : int) (d : int)
+            (e : int) (f : int) (g : int) (h : int) : int =
+  a * e - b * f - c * g - d * h
+
+let prod4_2 (a : int) (b : int) (c : int) (d : int)
+            (e : int) (f : int) (g : int) (h : int) : int =
+  a * f + b * e + c * h - d * g
+
+let prod4_3 (a : int) (b : int) (c : int) (d : int)
+            (e : int) (f : int) (g : int) (h : int) : int =
+  a * g - b * h + c * e + d * f
+
+let prod4_4 (a : int) (b : int) (c : int) (d : int)
+            (e : int) (f : int) (g : int) (h : int) : int =
+  a * h + b * g - c * f + d * e
+
+(* ============================================================
+   Euler's four-square identity (the multiplicativity of sum_sq4).
+     (a^2+b^2+c^2+d^2)(e^2+f^2+g^2+h^2) = P_1^2 + P_2^2 + P_3^2 + P_4^2
+   Pure polynomial fact — nonlin handles it.
+   ============================================================ *)
+
+theorem euler_four_square_identity a b c d e f g h =
+    sum_sq4 a b c d * sum_sq4 e f g h
+  = sum_sq4
+      (prod4_1 a b c d e f g h)
+      (prod4_2 a b c d e f g h)
+      (prod4_3 a b c d e f g h)
+      (prod4_4 a b c d e f g h)
+[@@by simplify () @> nonlin ()]
+
+(* ============================================================
+   Small-case sanity: 0, 1, 2, 3, 4, 5 as sums of four squares.
+   ============================================================ *)
+
+eval sum_sq4 0 0 0 0   (* 0 *)
+eval sum_sq4 1 0 0 0   (* 1 *)
+eval sum_sq4 1 1 0 0   (* 2 *)
+eval sum_sq4 1 1 1 0   (* 3 *)
+eval sum_sq4 2 0 0 0   (* 4 *)
+eval sum_sq4 2 1 0 0   (* 5 *)
+eval sum_sq4 2 1 1 1   (* 7 *)
+
+(* ============================================================
+   Small-case witnesses: each of 0, 1, 2, 3 is a sum of four squares.
+   ============================================================ *)
+
+lemma zero_is_sum4 = sum_sq4 0 0 0 0 = 0
+[@@by auto]
+
+lemma one_is_sum4 = sum_sq4 1 0 0 0 = 1
+[@@by auto]
+
+lemma two_is_sum4 = sum_sq4 1 1 0 0 = 2
+[@@by auto]
+
+lemma three_is_sum4 = sum_sq4 1 1 1 0 = 3
+[@@by auto]
+
+(* ============================================================
+   Existential predicate: n is expressible as a sum of four squares.
+   Formulated via an existence claim that individual witnesses
+   witness-functions discharge.  (The main theorem is stated in
+   terms of a total witness function `four_sq`, defined later.)
+   ============================================================ *)
+
+(* A 4-tuple of ints. *)
+type sq4 = { a : int; b : int; c : int; d : int }
+
+let sum4 (q : sq4) : int = sum_sq4 q.a q.b q.c q.d
+
+let prod4 (q : sq4) (r : sq4) : sq4 =
+  { a = prod4_1 q.a q.b q.c q.d r.a r.b r.c r.d;
+    b = prod4_2 q.a q.b q.c q.d r.a r.b r.c r.d;
+    c = prod4_3 q.a q.b q.c q.d r.a r.b r.c r.d;
+    d = prod4_4 q.a q.b q.c q.d r.a r.b r.c r.d }
+
+(* Re-stated Euler identity in tuple form. *)
+theorem sum4_prod4 q r =
+  sum4 q * sum4 r = sum4 (prod4 q r)
+[@@by simplify () @> nonlin ()]
+
+(* ============================================================
+   PHASE B: pigeonhole seed for odd primes.
+
+   For odd prime p, there exist 0 <= x, y <= (p-1)/2 such that
+     x^2 + y^2 + 1  ≡  0  (mod p).
+   Equivalently, m*p = x^2 + y^2 + 1^2 + 0^2 for some 1 <= m < p.
+
+   Proof: consider the two sets (each of size (p+1)/2, mod p)
+     T = { (x*x) mod p        : 0 <= x <= (p-1)/2 }
+     U = { ((-1) - y*y) mod p : 0 <= y <= (p-1)/2 }
+   Both are subsets of Z/pZ (size p); |T| + |U| = p+1 > p
+   forces a common element, giving x*x ≡ -1 - y*y (mod p).
+   ============================================================ *)
+
+(* Bounded search: largest y in [0, ymax] with
+   (x*x + y*y + 1) mod p = 0, or -1 if none. *)
+let rec seed_y (p : int) (x : int) (ymax : int) : int =
+  if ymax < 0 then -1
+  else if (x * x + ymax * ymax + 1) mod p = 0 then ymax
+  else seed_y p x (ymax - 1)
+[@@measure Ordinal.of_int (max 0 (ymax + 1))]
+
+(* Largest x in [0, xmax] for which seed_y p x ((p-1)/2) >= 0, or -1. *)
+let rec seed_x_idx (p : int) (xmax : int) : int =
+  if xmax < 0 then -1
+  else if seed_y p xmax ((p - 1) / 2) >= 0 then xmax
+  else seed_x_idx p (xmax - 1)
+[@@measure Ordinal.of_int (max 0 (xmax + 1))]
+
+let find_seed_x (p : int) : int = seed_x_idx p ((p - 1) / 2)
+let find_seed_y (p : int) : int =
+  let x = find_seed_x p in
+  if x < 0 then -1 else seed_y p x ((p - 1) / 2)
+
+(* Evaluation sanity: for odd primes, find_seed should return valid x, y. *)
+eval find_seed_x 3, find_seed_y 3
+eval find_seed_x 5, find_seed_y 5
+eval find_seed_x 7, find_seed_y 7
+eval find_seed_x 11, find_seed_y 11
+eval find_seed_x 13, find_seed_y 13
+
+(* ============================================================
+   Invariants of the bounded search.
+   ============================================================ *)
+
+(* If seed_y returns y >= 0, it's in [0, ymax] and satisfies the condition. *)
+lemma seed_y_valid p x ymax =
+  ymax >= 0
+  && seed_y p x ymax >= 0
+  ==>   seed_y p x ymax <= ymax
+      && seed_y p x ymax >= 0
+      && (x * x + seed_y p x ymax * seed_y p x ymax + 1) mod p = 0
+[@@by induction ~id:[%id seed_y] () @>>| auto]
+
+(* If seed_x_idx returns x >= 0, then x is a valid witness
+   (there's some y in [0, (p-1)/2] with the condition). *)
+lemma seed_x_idx_valid p xmax =
+  xmax >= 0
+  && p >= 2
+  && seed_x_idx p xmax >= 0
+  ==>   seed_x_idx p xmax <= xmax
+      && seed_x_idx p xmax >= 0
+      && seed_y p (seed_x_idx p xmax) ((p - 1) / 2) >= 0
+[@@by induction ~id:[%id seed_x_idx] () @>>| auto]
+
+(* ============================================================
+   Distinct squares mod p.
+   For prime p and x1, x2 in [0, (p-1)/2]:
+     x1^2 ≡ x2^2 (mod p)  ==>  x1 = x2.
+   ============================================================ *)
+
+(* Difference of squares: x1^2 - x2^2 = (x1 - x2)*(x1 + x2). *)
+lemma diff_sq_factor x1 x2 =
+  x1 * x1 - x2 * x2 = (x1 - x2) * (x1 + x2)
+[@@by nonlin ()]
+
+(* Helper: if p >= 2 and p | n with 0 <= n < p, then n = 0. *)
+lemma prime_divides_small_nonneg n p =
+  p >= 2 && Inf_primes.divides p n && 0 <= n && n < p
+  ==> n = 0
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Gcd.mod_small n p]
+  @> auto]
+
+(* Helper: if a mod p = b mod p, then p | (a - b). *)
+lemma mod_eq_implies_divides_diff a b p =
+  p <> 0 && a mod p = b mod p
+  ==> Inf_primes.divides p (a - b)
+[@@by intros
+  @> [%use Mod.Theorems.div_mod a p]
+  @> [%use Mod.Theorems.div_mod b p]
+  @> [%use Mod.Theorems.mod_mul_left_zero (a / p - b / p) p]
+  @> [%simp_only Inf_primes.divides]
+  @> auto]
+
+(* Mod-preserving negation: if p | n then p | (-n). *)
+lemma divides_neg p n =
+  Inf_primes.divides p n ==> Inf_primes.divides p (-n)
+[@@by intros
+  @> [%use Mod.Theorems.mod_mul_preserves_zero (-1) n p]
+  @> [%simp_only Inf_primes.divides]
+  @> auto]
+
+(* Distinct squares mod prime p: if 0 <= x1, x2 <= (p-1)/2 and
+   x1^2 ≡ x2^2 (mod p), then x1 = x2. *)
+lemma distinct_sqr_mod p x1 x2 =
+  Inf_primes.is_prime p
+  && 0 <= x1 && x1 <= (p - 1) / 2
+  && 0 <= x2 && x2 <= (p - 1) / 2
+  && (x1 * x1) mod p = (x2 * x2) mod p
+  ==> x1 = x2
+[@@by intros
+  @> [%use mod_eq_implies_divides_diff (x1 * x1) (x2 * x2) p]
+  (* p | (x1*x1 - x2*x2) = (x1+x2) * (x1-x2) *)
+  @> [%use diff_sq_factor x1 x2]
+  @> [%use Fta.euclid_prime_divides_mul p (x1 + x2) (x1 - x2)]
+  (* Case: p | (x1+x2).  x1+x2 in [0, p-1], so x1+x2 = 0. *)
+  @> [%use prime_divides_small_nonneg (x1 + x2) p]
+  (* Case: p | (x1-x2).  Handle both signs. *)
+  @> [%cases (x1 >= x2)]
+  @>| [intros
+       @> [%use prime_divides_small_nonneg (x1 - x2) p]
+       @> auto;
+       intros
+       @> [%use divides_neg p (x1 - x2)]
+       @> [%use prime_divides_small_nonneg (x2 - x1) p]
+       @> auto]]
+
+(* ============================================================
+   Pigeonhole: for distinct lists, sublistp ==> length bound.
+   Combines Sets.num_members_len with the trivial bound
+     num_members u s <= List.length u.
+   ============================================================ *)
+
+lemma num_members_bound (u : 'a list) (s : 'a list) =
+  Sets.num_members u s <= List.length u
+[@@by auto]
+
+lemma sublistp_length (s : 'a list) (u : 'a list) =
+  Sets.dlistp u && Sets.sublistp s u && Sets.dlistp s
+  ==> List.length s <= List.length u
+[@@by
+  [%use Sets.num_members_len u s]
+  @> [%use num_members_bound u s]
+  @> auto]
+
+(* ============================================================
+   Residue lists for the pigeonhole argument.
+
+     sq_res_from p k = [k*k mod p; (k-1)*(k-1) mod p; ...; 0*0 mod p]
+     neg_sq_res_from p k = [(-1 - k*k) mod p; ...; (-1 - 0*0) mod p]
+
+   Both have length k + 1.
+   ============================================================ *)
+
+(* (-1 - y^2) mod p, normalized to [0, p-1] for p >= 1. *)
+let neg_sq_mod (p : int) (y : int) : int =
+  (2 * p - 1 - (y * y) mod p) mod p
+
+let rec sq_res_from (p : int) (k : int) : int list =
+  if k < 0 then []
+  else (k * k) mod p :: sq_res_from p (k - 1)
+[@@measure Ordinal.of_int (max 0 (k + 1))]
+
+let rec neg_sq_res_from (p : int) (k : int) : int list =
+  if k < 0 then []
+  else neg_sq_mod p k :: neg_sq_res_from p (k - 1)
+[@@measure Ordinal.of_int (max 0 (k + 1))]
+
+(* [0, 1, 2, ..., k-1] — list of all residues mod p when k = p. *)
+let rec range_0_to (k : int) : int list =
+  if k <= 0 then []
+  else range_0_to (k - 1) @ [k - 1]
+[@@measure Ordinal.of_int (max 0 k)]
+
+(* Lengths. *)
+lemma sq_res_from_length p k =
+  k >= -1 ==> List.length (sq_res_from p k) = k + 1
+[@@by induction ~id:[%id sq_res_from] () @>>| auto]
+
+lemma neg_sq_res_from_length p k =
+  k >= -1 ==> List.length (neg_sq_res_from p k) = k + 1
+[@@by induction ~id:[%id neg_sq_res_from] () @>>| auto]
+
+lemma range_0_to_length k =
+  k >= 0 ==> List.length (range_0_to k) = k
+[@@by induction ~id:[%id range_0_to] () @>>| auto]
+
+(* Membership and distinctness of range_0_to. *)
+lemma mem_range_0_to x k =
+  (List.mem x (range_0_to k)) = (0 <= x && x < k)
+[@@by induction ~id:[%id range_0_to] () @>>| auto]
+
+lemma dlistp_range_0_to k =
+  Sets.dlistp (range_0_to k)
+[@@by induction ~id:[%id range_0_to] () @>| [auto;
+       intros @> [%use mem_range_0_to (k - 1) (k - 1)] @> auto]]
+
+(* Each element of sq_res_from p k lies in [0, p-1]. *)
+lemma sq_res_from_sublistp p k =
+  p >= 1 && k >= -1
+  ==> Sets.sublistp (sq_res_from p k) (range_0_to p)
+[@@by induction ~id:[%id sq_res_from] ()
+  @>| [auto;
+       intros
+       @> [%use Mod.Theorems.mod_range (k * k) p]
+       @> [%use mem_range_0_to ((k * k) mod p) p]
+       @> [%expand Mod.abs p]
+       @> auto]]
+
+lemma neg_sq_mod_range p y =
+  p >= 1 ==> 0 <= neg_sq_mod p y && neg_sq_mod p y < p
+[@@by intros
+  @> [%expand neg_sq_mod p y]
+  @> [%use Mod.Theorems.mod_range (2 * p - 1 - (y * y) mod p) p]
+  @> [%expand Mod.abs p]
+  @> auto]
+
+lemma neg_sq_res_from_sublistp p k =
+  p >= 1 && k >= -1
+  ==> Sets.sublistp (neg_sq_res_from p k) (range_0_to p)
+[@@by induction ~id:[%id neg_sq_res_from] ()
+  @>| [auto;
+       intros
+       @> [%use neg_sq_mod_range p k]
+       @> [%use mem_range_0_to (neg_sq_mod p k) p]
+       @> auto]]
+
+(* Membership of sq_res_from p k implies the value is of the form i*i mod p
+   for some i in [0, k]. We express this via a witness function. *)
+let rec sq_res_witness (p : int) (k : int) (r : int) : int =
+  if k < 0 then -1
+  else if (k * k) mod p = r then k
+  else sq_res_witness p (k - 1) r
+[@@measure Ordinal.of_int (max 0 (k + 1))]
+
+lemma sq_res_witness_mem p k r =
+  k >= -1 && List.mem r (sq_res_from p k)
+  ==> sq_res_witness p k r >= 0
+      && sq_res_witness p k r <= k
+      && (sq_res_witness p k r * sq_res_witness p k r) mod p = r
+[@@by induction ~id:[%id sq_res_from] () @>>| auto]
+
+(* Distinctness of sq_res_from: uses distinct_sqr_mod applied to witness. *)
+lemma dlistp_sq_res_from p k =
+  Inf_primes.is_prime p && k >= -1 && k <= (p - 1) / 2
+  ==> Sets.dlistp (sq_res_from p k)
+[@@by induction ~id:[%id sq_res_from] ()
+  @>| [auto;
+       intros
+       @> [%cases (List.mem ((k * k) mod p) (sq_res_from p (k - 1)))]
+       @>| [intros
+            @> [%use sq_res_witness_mem p (k - 1) ((k * k) mod p)]
+            @> [%use distinct_sqr_mod p k (sq_res_witness p (k - 1) ((k * k) mod p))]
+            @> auto;
+            auto]]]
+
+(* Analogous witness and distinctness for neg_sq_res_from. *)
+let rec neg_sq_res_witness (p : int) (k : int) (r : int) : int =
+  if k < 0 then -1
+  else if neg_sq_mod p k = r then k
+  else neg_sq_res_witness p (k - 1) r
+[@@measure Ordinal.of_int (max 0 (k + 1))]
+
+lemma neg_sq_res_witness_mem p k r =
+  k >= -1 && List.mem r (neg_sq_res_from p k)
+  ==> neg_sq_res_witness p k r >= 0
+      && neg_sq_res_witness p k r <= k
+      && neg_sq_mod p (neg_sq_res_witness p k r) = r
+[@@by induction ~id:[%id neg_sq_res_from] () @>>| auto]
+
+(* Simplification: neg_sq_mod p y = p - 1 - (y*y mod p) for p >= 1. *)
+lemma neg_sq_mod_simplify p y =
+  p >= 1
+  ==> neg_sq_mod p y = p - 1 - (y * y) mod p
+[@@by intros
+  @> [%expand neg_sq_mod p y]
+  @> [%use Mod.Theorems.mod_range (y * y) p]
+  @> [%expand Mod.abs p]
+  @> [%use Mod.Theorems.mod_add p (p - 1 - (y * y) mod p) p]
+  @> [%use Mod.Theorems.mod_mul_left_zero 1 p]
+  @> [%use Gcd.mod_small (p - 1 - (y * y) mod p) p]
+  @> auto]
+
+(* Key: neg_sq_mod is injective on [0, (p-1)/2] for prime p,
+   since it's just a shift of y*y mod p. *)
+lemma neg_sq_mod_injective p y1 y2 =
+  Inf_primes.is_prime p
+  && 0 <= y1 && y1 <= (p - 1) / 2
+  && 0 <= y2 && y2 <= (p - 1) / 2
+  && neg_sq_mod p y1 = neg_sq_mod p y2
+  ==> y1 = y2
+[@@by intros
+  @> [%use neg_sq_mod_simplify p y1]
+  @> [%use neg_sq_mod_simplify p y2]
+  @> [%use distinct_sqr_mod p y1 y2]
+  @> auto]
+
+lemma dlistp_neg_sq_res_from p k =
+  Inf_primes.is_prime p && k >= -1 && k <= (p - 1) / 2
+  ==> Sets.dlistp (neg_sq_res_from p k)
+[@@by induction ~id:[%id neg_sq_res_from] ()
+  @>| [auto;
+       intros
+       @> [%cases (List.mem (neg_sq_mod p k) (neg_sq_res_from p (k - 1)))]
+       @>| [intros
+            @> [%use neg_sq_res_witness_mem p (k - 1) (neg_sq_mod p k)]
+            @> [%use neg_sq_mod_injective p k (neg_sq_res_witness p (k - 1) (neg_sq_mod p k))]
+            @> auto;
+            auto]]]
+
+(* ============================================================
+   Connection: an overlap between sq_res and neg_sq_res gives
+   our seed (x, y) with (x^2 + y^2 + 1) mod p = 0.
+   ============================================================ *)
+
+lemma sq_eq_neg_sq_gives_seed p x y =
+  p >= 2 && 0 <= x && 0 <= y
+  && (x * x) mod p = neg_sq_mod p y
+  ==> (x * x + y * y + 1) mod p = 0
+[@@by intros
+  @> [%use neg_sq_mod_simplify p y]
+  (* x*x + y*y + 1 is a multiple of p, via div_mod + substitution. *)
+  @> [%use Mod.Theorems.div_mod (x * x) p]
+  @> [%use Mod.Theorems.div_mod (y * y) p]
+  @> [%use Mod.Theorems.mod_mul_left_zero (1 + (x * x) / p + (y * y) / p) p]
+  @> auto]
+
+(* ============================================================
+   The pigeonhole contradiction: if sq_res and neg_sq_res are
+   disjoint, their concatenation has length p+1 but is a sublist
+   of range_0_to p (of length p).
+   ============================================================ *)
+
+(* sublistp is preserved under append when both parts are sublists. *)
+lemma sublistp_append (s1 : 'a list) (s2 : 'a list) (u : 'a list) =
+  Sets.sublistp s1 u && Sets.sublistp s2 u
+  ==> Sets.sublistp (s1 @ s2) u
+[@@by induction ~id:[%id Sets.sublistp] () @>>| auto]
+
+(* dlistp preserved by append when both distinct and disjoint. *)
+lemma dlistp_append (s1 : 'a list) (s2 : 'a list) =
+  Sets.dlistp s1 && Sets.dlistp s2
+  && Sets.set_intersect s1 s2 = []
+  ==> Sets.dlistp (s1 @ s2)
+[@@by induction ~id:[%id Sets.dlistp] ()
+  @>| [auto;
+       intros
+       @> [%use Sets.mem_append (List.hd s1) (List.tl s1) s2]
+       @> auto]]
+
+(* Completeness of seed_y: if ∃ y0 in [0, k] with condition, seed_y succeeds. *)
+lemma seed_y_finds p x k y0 =
+  0 <= y0 && y0 <= k
+  && (x * x + y0 * y0 + 1) mod p = 0
+  ==> seed_y p x k >= 0
+[@@by induction ~id:[%id seed_y] ()
+  @>| [auto;
+       intros @> [%cases (y0 = k)] @>>| auto]]
+
+(* Completeness of seed_x_idx: if ∃ x0 in [0, xmax] with seed_y succeeding, seed_x_idx succeeds. *)
+lemma seed_x_idx_finds p xmax x0 =
+  0 <= x0 && x0 <= xmax
+  && seed_y p x0 ((p - 1) / 2) >= 0
+  ==> seed_x_idx p xmax >= 0
+[@@by induction ~id:[%id seed_x_idx] () @>>| auto]
+
+(* The pigeonhole contradiction specialized to odd primes. *)
+theorem pigeonhole_seed_exists p =
+  Inf_primes.is_prime p && p >= 3
+  ==> Sets.set_intersect
+        (sq_res_from p ((p - 1) / 2))
+        (neg_sq_res_from p ((p - 1) / 2)) <> []
+[@@by intros
+  @> [%cases
+        (Sets.set_intersect
+           (sq_res_from p ((p - 1) / 2))
+           (neg_sq_res_from p ((p - 1) / 2)) = [])]
+  @>| [(* True case: disjoint ⇒ derive contradiction *)
+       intros
+       @> [%use dlistp_sq_res_from p ((p - 1) / 2)]
+       @> [%use dlistp_neg_sq_res_from p ((p - 1) / 2)]
+       @> [%use sq_res_from_length p ((p - 1) / 2)]
+       @> [%use neg_sq_res_from_length p ((p - 1) / 2)]
+       @> [%use sq_res_from_sublistp p ((p - 1) / 2)]
+       @> [%use neg_sq_res_from_sublistp p ((p - 1) / 2)]
+       @> [%use dlistp_range_0_to p]
+       @> [%use range_0_to_length p]
+       @> [%use dlistp_append (sq_res_from p ((p - 1) / 2))
+                              (neg_sq_res_from p ((p - 1) / 2))]
+       @> [%use sublistp_append (sq_res_from p ((p - 1) / 2))
+                                (neg_sq_res_from p ((p - 1) / 2))
+                                (range_0_to p)]
+       @> [%use sublistp_length
+             ((sq_res_from p ((p - 1) / 2)) @ (neg_sq_res_from p ((p - 1) / 2)))
+             (range_0_to p)]
+       @> auto;
+       (* False case: nonempty — done *)
+       auto]]
+
+(* ============================================================
+   Main of Phase B: for odd prime p, seed_x_idx finds a valid seed.
+   Combines pigeonhole_seed_exists with the seed-completeness lemmas.
+   ============================================================ *)
+
+(* Head of non-empty list is a member. *)
+lemma mem_hd_nonempty (l : 'a list) =
+  l <> [] ==> List.mem (List.hd l) l
+[@@by auto]
+
+theorem seed_exists_odd_prime p =
+  Inf_primes.is_prime p && p >= 3
+  ==> seed_x_idx p ((p - 1) / 2) >= 0
+[@@by intros
+  @> [%use pigeonhole_seed_exists p]
+  @> let inter =
+       Sets.set_intersect
+         (sq_res_from p ((p - 1) / 2))
+         (neg_sq_res_from p ((p - 1) / 2))
+     in
+     [%use mem_hd_nonempty inter]
+  @> let r = List.hd
+       (Sets.set_intersect
+          (sq_res_from p ((p - 1) / 2))
+          (neg_sq_res_from p ((p - 1) / 2)))
+     in
+     [%use Sets.mem_set_intersect r
+        (sq_res_from p ((p - 1) / 2)) (neg_sq_res_from p ((p - 1) / 2))]
+  @> [%use sq_res_witness_mem p ((p - 1) / 2) r]
+  @> [%use neg_sq_res_witness_mem p ((p - 1) / 2) r]
+  @> let xw = sq_res_witness p ((p - 1) / 2) r in
+     let yw = neg_sq_res_witness p ((p - 1) / 2) r in
+     [%use sq_eq_neg_sq_gives_seed p xw yw]
+  @> [%use seed_y_finds p xw ((p - 1) / 2) yw]
+  @> [%use seed_x_idx_finds p ((p - 1) / 2) xw]
+  @> auto]
+
+(* ============================================================
+   PHASE C: descent step for primes.
+
+   Given m*p = a^2 + b^2 + c^2 + d^2 with 1 < m < p, construct
+   m'*p = a'^2 + b'^2 + c'^2 + d'^2 with m' < m.
+
+   Uses:
+   - c_mod: centered residue in (-m/2, m/2] (roughly).
+   - The Euler identity on (a,b,c,d) * (ra, -rb, -rc, -rd) where
+     (ra, rb, rc, rd) are centered residues of (a,b,c,d) mod m:
+     each of the four prod4 components is divisible by m.
+   ============================================================ *)
+
+(* Centered residue: c_mod a m is in (-m/2, m/2], congruent to a mod m. *)
+let c_mod (a : int) (m : int) : int =
+  let r = a mod m in
+  if 2 * r > m then r - m else r
+
+eval c_mod 7 5       (* 2 *)
+eval c_mod 8 5       (* -2 *)
+eval c_mod 10 5      (* 0 *)
+eval c_mod 9 4       (* 1 *)
+eval c_mod 10 4      (* 2 (boundary) *)
+
+(* c_mod a m has same residue mod m as a. *)
+lemma c_mod_mod_eq a m =
+  m > 0 ==> (c_mod a m) mod m = a mod m
+[@@by intros
+  @> [%expand c_mod a m]
+  @> [%cases (2 * (a mod m) > m)]
+  @>| [(* case: c_mod = a mod m - m *)
+       intros
+       @> [%use Mod.Theorems.mod_add (a mod m) (-m) m]
+       @> [%use Mod.Theorems.mod_mul_left_zero (-1) m]
+       @> [%use Mod.Theorems.mod_idem a m]
+       @> auto;
+       (* case: c_mod = a mod m *)
+       intros
+       @> [%use Mod.Theorems.mod_idem a m]
+       @> auto]]
+
+(* c_mod a m is congruent to a mod m, i.e., m | (a - c_mod a m). *)
+lemma c_mod_congr a m =
+  m > 0 ==> Inf_primes.divides m (a - c_mod a m)
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%use c_mod_mod_eq a m]
+  @> [%use Mod.Theorems.mod_add a (-c_mod a m) m]
+  @> [%use Mod.Theorems.mod_add (c_mod a m) (-c_mod a m) m]
+  @> [%use Mod.Theorems.mod_mul_left_zero ((c_mod a m) / m) m]
+  @> [%use Mod.Theorems.div_mod (-c_mod a m) m]
+  @> auto]
+
+(* c_mod a m has magnitude bounded by m/2: 2|c_mod a m| <= m. *)
+lemma c_mod_range a m =
+  m > 0 ==> 2 * c_mod a m > -m && 2 * c_mod a m <= m
+[@@by intros
+  @> [%expand c_mod a m]
+  @> [%use Mod.Theorems.mod_range a m]
+  @> [%expand Mod.abs m]
+  @> auto]
+
+(* The square of c_mod a m has the same mod m as a*a. *)
+lemma c_mod_sq_eq a m =
+  m > 0 ==> (c_mod a m) * (c_mod a m) mod m = (a * a) mod m
+[@@by intros
+  @> [%use c_mod_mod_eq a m]
+  @> [%use Mod.Theorems.mod_mul a a m]
+  @> [%use Mod.Theorems.mod_mul (c_mod a m) (c_mod a m) m]
+  @> auto]
+
+(* ============================================================
+   Centered tuple: replace each component of q by its c_mod.
+   ============================================================ *)
+
+let centered (m : int) (q : sq4) : sq4 =
+  { a = c_mod q.a m;
+    b = c_mod q.b m;
+    c = c_mod q.c m;
+    d = c_mod q.d m }
+
+(* If two pairs of integers each have same residue mod m, their sum has same residue mod m. *)
+lemma mod_eq_add a b a' b' m =
+  m > 0 && a mod m = a' mod m && b mod m = b' mod m
+  ==> (a + b) mod m = (a' + b') mod m
+[@@by intros
+  @> [%use Mod.Theorems.mod_add a b m]
+  @> [%use Mod.Theorems.mod_add a' b' m]
+  @> auto]
+
+(* The sum of squares of the centered tuple has same residue mod m as q. *)
+lemma sum4_centered_mod m q =
+  m > 0 ==> sum4 (centered m q) mod m = sum4 q mod m
+[@@by intros
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> [%expand centered m q]
+  @> [%use c_mod_sq_eq q.a m]
+  @> [%use c_mod_sq_eq q.b m]
+  @> [%use c_mod_sq_eq q.c m]
+  @> [%use c_mod_sq_eq q.d m]
+  @> [%use mod_eq_add ((c_mod q.a m) * (c_mod q.a m)) ((c_mod q.b m) * (c_mod q.b m))
+                       (q.a * q.a) (q.b * q.b) m]
+  @> [%use mod_eq_add ((c_mod q.c m) * (c_mod q.c m)) ((c_mod q.d m) * (c_mod q.d m))
+                       (q.c * q.c) (q.d * q.d) m]
+  @> [%use mod_eq_add ((c_mod q.a m) * (c_mod q.a m) + (c_mod q.b m) * (c_mod q.b m))
+                       ((c_mod q.c m) * (c_mod q.c m) + (c_mod q.d m) * (c_mod q.d m))
+                       (q.a * q.a + q.b * q.b) (q.c * q.c + q.d * q.d) m]
+  @> auto]
+
+(* If 2|c| <= m, then 4*c^2 <= m^2. *)
+lemma c_mod_sq_bound c m =
+  m > 0 && 2 * c > -m && 2 * c <= m
+  ==> 4 * c * c <= m * m
+[@@by intros @> nonlin ()]
+
+(* The sum of 4 squares of centered residues is bounded by m^2. *)
+lemma sum4_centered_bound m q =
+  m > 0 ==> 4 * sum4 (centered m q) <= 4 * m * m
+[@@by intros
+  @> [%expand centered m q]
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> [%use c_mod_range q.a m]
+  @> [%use c_mod_range q.b m]
+  @> [%use c_mod_range q.c m]
+  @> [%use c_mod_range q.d m]
+  @> [%use c_mod_sq_bound (c_mod q.a m) m]
+  @> [%use c_mod_sq_bound (c_mod q.b m) m]
+  @> [%use c_mod_sq_bound (c_mod q.c m) m]
+  @> [%use c_mod_sq_bound (c_mod q.d m) m]
+  @> arith]
+
+(* ============================================================
+   Key descent step: prod4 with the conjugated centered tuple.
+
+   Conjugate: { a = ra; b = -rb; c = -rc; d = -rd }.
+   Claim: each prod4 component is divisible by m, when (a,b,c,d)
+   is congruent component-wise to (ra, rb, rc, rd) mod m AND
+   ra^2 + rb^2 + rc^2 + rd^2 ≡ 0 (mod m).
+   ============================================================ *)
+
+(* The conjugated tuple. *)
+let conj4 (q : sq4) : sq4 =
+  { a = q.a; b = -q.b; c = -q.c; d = -q.d }
+
+(* sum4 (conj4 q) = sum4 q -- conjugation preserves sum of squares. *)
+lemma sum4_conj4 q =
+  sum4 (conj4 q) = sum4 q
+[@@by [%expand conj4 q] @> [%simp_only sum4] @> [%simp_only sum_sq4] @> nonlin ()]
+
+(* Each prod4 component evaluated on q and conj4 r is divisible by m
+   when q and r are congruent mod m AND m | sum4 r. *)
+lemma prod4_1_div_m m q r =
+  m > 0
+  && Inf_primes.divides m (q.a - r.a)
+  && Inf_primes.divides m (q.b - r.b)
+  && Inf_primes.divides m (q.c - r.c)
+  && Inf_primes.divides m (q.d - r.d)
+  && Inf_primes.divides m (sum4 r)
+  ==> Inf_primes.divides m (prod4 q (conj4 r)).a
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> [%simp_only conj4]
+  @> [%simp_only prod4]
+  @> [%simp_only prod4_1]
+  @> [%use Mod.Theorems.div_mod (q.a - r.a) m]
+  @> [%use Mod.Theorems.div_mod (q.b - r.b) m]
+  @> [%use Mod.Theorems.div_mod (q.c - r.c) m]
+  @> [%use Mod.Theorems.div_mod (q.d - r.d) m]
+  @> [%use Mod.Theorems.div_mod (r.a * r.a + r.b * r.b + r.c * r.c + r.d * r.d) m]
+  @> [%use Mod.Theorems.mod_mul_left_zero
+       ((r.a * r.a + r.b * r.b + r.c * r.c + r.d * r.d) / m
+        + r.a * ((q.a - r.a) / m)
+        + r.b * ((q.b - r.b) / m)
+        + r.c * ((q.c - r.c) / m)
+        + r.d * ((q.d - r.d) / m))
+       m]
+  @> nonlin ()]
+
+lemma prod4_2_div_m m q r =
+  m > 0
+  && Inf_primes.divides m (q.a - r.a)
+  && Inf_primes.divides m (q.b - r.b)
+  && Inf_primes.divides m (q.c - r.c)
+  && Inf_primes.divides m (q.d - r.d)
+  ==> Inf_primes.divides m (prod4 q (conj4 r)).b
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%simp_only conj4]
+  @> [%simp_only prod4]
+  @> [%simp_only prod4_2]
+  @> [%use Mod.Theorems.div_mod (q.a - r.a) m]
+  @> [%use Mod.Theorems.div_mod (q.b - r.b) m]
+  @> [%use Mod.Theorems.div_mod (q.c - r.c) m]
+  @> [%use Mod.Theorems.div_mod (q.d - r.d) m]
+  @> [%use Mod.Theorems.mod_mul_left_zero
+       (-r.b * ((q.a - r.a) / m)
+        + r.a * ((q.b - r.b) / m)
+        - r.d * ((q.c - r.c) / m)
+        + r.c * ((q.d - r.d) / m))
+       m]
+  @> nonlin ()]
+
+lemma prod4_3_div_m m q r =
+  m > 0
+  && Inf_primes.divides m (q.a - r.a)
+  && Inf_primes.divides m (q.b - r.b)
+  && Inf_primes.divides m (q.c - r.c)
+  && Inf_primes.divides m (q.d - r.d)
+  ==> Inf_primes.divides m (prod4 q (conj4 r)).c
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%simp_only conj4]
+  @> [%simp_only prod4]
+  @> [%simp_only prod4_3]
+  @> [%use Mod.Theorems.div_mod (q.a - r.a) m]
+  @> [%use Mod.Theorems.div_mod (q.b - r.b) m]
+  @> [%use Mod.Theorems.div_mod (q.c - r.c) m]
+  @> [%use Mod.Theorems.div_mod (q.d - r.d) m]
+  @> [%use Mod.Theorems.mod_mul_left_zero
+       (-r.c * ((q.a - r.a) / m)
+        + r.d * ((q.b - r.b) / m)
+        + r.a * ((q.c - r.c) / m)
+        - r.b * ((q.d - r.d) / m))
+       m]
+  @> nonlin ()]
+
+lemma prod4_4_div_m m q r =
+  m > 0
+  && Inf_primes.divides m (q.a - r.a)
+  && Inf_primes.divides m (q.b - r.b)
+  && Inf_primes.divides m (q.c - r.c)
+  && Inf_primes.divides m (q.d - r.d)
+  ==> Inf_primes.divides m (prod4 q (conj4 r)).d
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%simp_only conj4]
+  @> [%simp_only prod4]
+  @> [%simp_only prod4_4]
+  @> [%use Mod.Theorems.div_mod (q.a - r.a) m]
+  @> [%use Mod.Theorems.div_mod (q.b - r.b) m]
+  @> [%use Mod.Theorems.div_mod (q.c - r.c) m]
+  @> [%use Mod.Theorems.div_mod (q.d - r.d) m]
+  @> [%use Mod.Theorems.mod_mul_left_zero
+       (-r.d * ((q.a - r.a) / m)
+        - r.c * ((q.b - r.b) / m)
+        + r.b * ((q.c - r.c) / m)
+        + r.a * ((q.d - r.d) / m))
+       m]
+  @> nonlin ()]
+
+(* The centered tuple satisfies the descent hypotheses
+   componentwise w.r.t. q. *)
+lemma centered_minus_q_div_a m q =
+  m > 0 ==> Inf_primes.divides m (q.a - (centered m q).a)
+[@@by intros @> [%simp_only centered] @> [%use c_mod_congr q.a m] @> auto]
+
+lemma centered_minus_q_div_b m q =
+  m > 0 ==> Inf_primes.divides m (q.b - (centered m q).b)
+[@@by intros @> [%simp_only centered] @> [%use c_mod_congr q.b m] @> auto]
+
+lemma centered_minus_q_div_c m q =
+  m > 0 ==> Inf_primes.divides m (q.c - (centered m q).c)
+[@@by intros @> [%simp_only centered] @> [%use c_mod_congr q.c m] @> auto]
+
+lemma centered_minus_q_div_d m q =
+  m > 0 ==> Inf_primes.divides m (q.d - (centered m q).d)
+[@@by intros @> [%simp_only centered] @> [%use c_mod_congr q.d m] @> auto]
+
+(* If m | sum4 q, then m | sum4 (centered m q). *)
+lemma m_div_sum4_centered m q =
+  m > 0 && Inf_primes.divides m (sum4 q)
+  ==> Inf_primes.divides m (sum4 (centered m q))
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%use sum4_centered_mod m q]
+  @> auto]
+
+(* ============================================================
+   The descent transformation.
+ *)
+
+(* Given m | n, n = m * (n / m) (well-defined integer division). *)
+lemma divides_quot d n =
+  d > 0 && Inf_primes.divides d n ==> d * (n / d) = n
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.div_mod n d]
+  @> auto]
+
+(* Descent transformation: divide each prod4 component by m. *)
+let descent_q (m : int) (q : sq4) : sq4 =
+  let r = centered m q in
+  let p4 = prod4 q (conj4 r) in
+  { a = p4.a / m; b = p4.b / m; c = p4.c / m; d = p4.d / m }
+
+let descent_m (m : int) (q : sq4) : int =
+  sum4 (centered m q) / m
+
+(* Each prod4 component on (q, conj4 r) equals m * (descent_q component). *)
+lemma descent_q_a_times_m m q =
+  m > 0 && Inf_primes.divides m (sum4 q)
+  ==> m * (descent_q m q).a = (prod4 q (conj4 (centered m q))).a
+[@@by intros
+  @> [%simp_only descent_q]
+  @> [%use prod4_1_div_m m q (centered m q)]
+  @> [%use centered_minus_q_div_a m q]
+  @> [%use centered_minus_q_div_b m q]
+  @> [%use centered_minus_q_div_c m q]
+  @> [%use centered_minus_q_div_d m q]
+  @> [%use m_div_sum4_centered m q]
+  @> [%use divides_quot m (prod4 q (conj4 (centered m q))).a]
+  @> auto]
+
+lemma descent_q_b_times_m m q =
+  m > 0
+  ==> m * (descent_q m q).b = (prod4 q (conj4 (centered m q))).b
+[@@by intros
+  @> [%simp_only descent_q]
+  @> [%use prod4_2_div_m m q (centered m q)]
+  @> [%use centered_minus_q_div_a m q]
+  @> [%use centered_minus_q_div_b m q]
+  @> [%use centered_minus_q_div_c m q]
+  @> [%use centered_minus_q_div_d m q]
+  @> [%use divides_quot m (prod4 q (conj4 (centered m q))).b]
+  @> auto]
+
+lemma descent_q_c_times_m m q =
+  m > 0
+  ==> m * (descent_q m q).c = (prod4 q (conj4 (centered m q))).c
+[@@by intros
+  @> [%simp_only descent_q]
+  @> [%use prod4_3_div_m m q (centered m q)]
+  @> [%use centered_minus_q_div_a m q]
+  @> [%use centered_minus_q_div_b m q]
+  @> [%use centered_minus_q_div_c m q]
+  @> [%use centered_minus_q_div_d m q]
+  @> [%use divides_quot m (prod4 q (conj4 (centered m q))).c]
+  @> auto]
+
+lemma descent_q_d_times_m m q =
+  m > 0
+  ==> m * (descent_q m q).d = (prod4 q (conj4 (centered m q))).d
+[@@by intros
+  @> [%simp_only descent_q]
+  @> [%use prod4_4_div_m m q (centered m q)]
+  @> [%use centered_minus_q_div_a m q]
+  @> [%use centered_minus_q_div_b m q]
+  @> [%use centered_minus_q_div_c m q]
+  @> [%use centered_minus_q_div_d m q]
+  @> [%use divides_quot m (prod4 q (conj4 (centered m q))).d]
+  @> auto]
+
+(* sum4 of prod4 q (conj4 r) equals m^2 * sum4 (descent_q m q). *)
+lemma sum4_prod4_eq_m2 m q =
+  m > 0 && Inf_primes.divides m (sum4 q)
+  ==>   sum4 (prod4 q (conj4 (centered m q)))
+      = m * m * sum4 (descent_q m q)
+[@@by intros
+  @> [%use descent_q_a_times_m m q]
+  @> [%use descent_q_b_times_m m q]
+  @> [%use descent_q_c_times_m m q]
+  @> [%use descent_q_d_times_m m q]
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> generalize (quote_term ((prod4 q (conj4 (centered m q))).a)) "p4a"
+  @> generalize (quote_term ((prod4 q (conj4 (centered m q))).b)) "p4b"
+  @> generalize (quote_term ((prod4 q (conj4 (centered m q))).c)) "p4c"
+  @> generalize (quote_term ((prod4 q (conj4 (centered m q))).d)) "p4d"
+  @> generalize (quote_term ((descent_q m q).a)) "qa"
+  @> generalize (quote_term ((descent_q m q).b)) "qb"
+  @> generalize (quote_term ((descent_q m q).c)) "qc"
+  @> generalize (quote_term ((descent_q m q).d)) "qd"
+  @> nonlin ()]
+
+(* m^2 * sum4 (descent_q m q) = sum4 q * sum4 (centered m q). *)
+lemma sum4_descent_eq m q =
+  m > 0 && Inf_primes.divides m (sum4 q)
+  ==>   m * m * sum4 (descent_q m q)
+      = sum4 q * sum4 (centered m q)
+[@@by intros
+  @> [%use sum4_prod4_eq_m2 m q]
+  @> [%use sum4_prod4 q (conj4 (centered m q))]
+  @> [%use sum4_conj4 (centered m q)]
+  @> auto]
+
+(* The main descent identity:
+   if sum4 q = m * p and sum4 (centered m q) = m * m', then
+   sum4 (descent_q m q) = p * m'. *)
+theorem descent_step_eq m q p mp =
+  m > 0 && sum4 q = m * p && sum4 (centered m q) = m * mp
+  ==> sum4 (descent_q m q) = p * mp
+[@@by intros
+  @> [%subgoal Inf_primes.divides m (sum4 q)]
+  @>| [intros
+       @> [%use sum4_descent_eq m q]
+       @> nonlin ();
+       [%simp_only Inf_primes.divides]
+       @> [%use Mod.Theorems.mod_mul_left_zero p m]
+       @> auto]]
+
+(* Bound: mp = sum4 (centered m q) / m  satisfies mp <= m. *)
+lemma descent_mp_upper m q mp =
+  m > 0 && sum4 (centered m q) = m * mp
+  ==> mp <= m
+[@@by intros
+  @> [%use sum4_centered_bound m q]
+  @> nonlin ()]
+
+(* mp >= 0 (sum of squares is nonneg). *)
+lemma sum4_centered_nonneg m q =
+  sum4 (centered m q) >= 0
+[@@by [%simp_only sum4] @> [%simp_only sum_sq4] @> nonlin ()]
+
+lemma descent_mp_nonneg m q mp =
+  m > 0 && sum4 (centered m q) = m * mp
+  ==> mp >= 0
+[@@by intros @> [%use sum4_centered_nonneg m q] @> nonlin ()]
+
+(* Sum of four squares = 0 implies each is 0. *)
+lemma sum_4_sq_zero a b c d =
+  a * a + b * b + c * c + d * d = 0
+  ==> a = 0 && b = 0 && c = 0 && d = 0
+[@@by nonlin ()]
+
+(* If all centered components are 0, m divides every component of q. *)
+lemma centered_zero_implies_div_a m q =
+  m > 0 && sum4 (centered m q) = 0 ==> Inf_primes.divides m q.a
+[@@by intros
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> [%simp_only centered]
+  @> [%use sum_4_sq_zero (c_mod q.a m) (c_mod q.b m) (c_mod q.c m) (c_mod q.d m)]
+  @> [%use c_mod_congr q.a m]
+  @> [%simp_only Inf_primes.divides]
+  @> auto]
+
+lemma centered_zero_implies_div_b m q =
+  m > 0 && sum4 (centered m q) = 0 ==> Inf_primes.divides m q.b
+[@@by intros
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> [%simp_only centered]
+  @> [%use sum_4_sq_zero (c_mod q.a m) (c_mod q.b m) (c_mod q.c m) (c_mod q.d m)]
+  @> [%use c_mod_congr q.b m]
+  @> [%simp_only Inf_primes.divides]
+  @> auto]
+
+lemma centered_zero_implies_div_c m q =
+  m > 0 && sum4 (centered m q) = 0 ==> Inf_primes.divides m q.c
+[@@by intros
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> [%simp_only centered]
+  @> [%use sum_4_sq_zero (c_mod q.a m) (c_mod q.b m) (c_mod q.c m) (c_mod q.d m)]
+  @> [%use c_mod_congr q.c m]
+  @> [%simp_only Inf_primes.divides]
+  @> auto]
+
+lemma centered_zero_implies_div_d m q =
+  m > 0 && sum4 (centered m q) = 0 ==> Inf_primes.divides m q.d
+[@@by intros
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> [%simp_only centered]
+  @> [%use sum_4_sq_zero (c_mod q.a m) (c_mod q.b m) (c_mod q.c m) (c_mod q.d m)]
+  @> [%use c_mod_congr q.d m]
+  @> [%simp_only Inf_primes.divides]
+  @> auto]
+
+(* If m | each component, then m^2 | sum4 q. *)
+lemma m_sq_div_sum4 m q =
+  m > 0
+  && Inf_primes.divides m q.a && Inf_primes.divides m q.b
+  && Inf_primes.divides m q.c && Inf_primes.divides m q.d
+  ==> Inf_primes.divides (m * m) (sum4 q)
+[@@by intros
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.div_mod q.a m]
+  @> [%use Mod.Theorems.div_mod q.b m]
+  @> [%use Mod.Theorems.div_mod q.c m]
+  @> [%use Mod.Theorems.div_mod q.d m]
+  @> [%use Mod.Theorems.mod_mul_left_zero
+       ((q.a / m) * (q.a / m) + (q.b / m) * (q.b / m)
+        + (q.c / m) * (q.c / m) + (q.d / m) * (q.d / m))
+       (m * m)]
+  @> nonlin ()]
+
+(* If m^2 | m*p with m > 0 and p > 0, then m | p. *)
+lemma m_sq_div_mp_implies_m_div_p m p =
+  m > 0 && Inf_primes.divides (m * m) (m * p)
+  ==> Inf_primes.divides m p
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.div_mod (m * p) (m * m)]
+  @> [%use Mod.Theorems.div_mod p m]
+  @> [%use Mod.Theorems.mod_mul_left_zero ((m * p) / (m * m)) m]
+  @> nonlin ()]
+
+(* If sum4 q = m * p with 1 < m < p prime and m | each q component,
+   then m^2 | m * p, so m | p, so m = 1 or m = p — contradicts 1 < m < p. *)
+lemma descent_mp_pos_contradiction p m q =
+  Inf_primes.is_prime p && 1 < m && m < p && sum4 q = m * p
+  && Inf_primes.divides m q.a && Inf_primes.divides m q.b
+  && Inf_primes.divides m q.c && Inf_primes.divides m q.d
+  ==> false
+[@@by intros
+  @> [%use m_sq_div_sum4 m q]
+  @> [%use m_sq_div_mp_implies_m_div_p m p]
+  @> [%simp_only Inf_primes.divides]
+  @> [%simp_only Inf_primes.is_prime]
+  @> [%use Fta.prime_divisor_is_1_or_p p m]
+  @> auto]
+
+(* mp >= 1 under descent hypotheses (otherwise contradiction). *)
+lemma descent_mp_pos p m q mp =
+  Inf_primes.is_prime p && 1 < m && m < p && sum4 q = m * p
+  && sum4 (centered m q) = m * mp
+  ==> mp >= 1
+[@@by intros
+  @> [%use descent_mp_nonneg m q mp]
+  @> [%cases (mp = 0)]
+  @>| [intros
+       @> [%use centered_zero_implies_div_a m q]
+       @> [%use centered_zero_implies_div_b m q]
+       @> [%use centered_zero_implies_div_c m q]
+       @> [%use centered_zero_implies_div_d m q]
+       @> [%use descent_mp_pos_contradiction p m q]
+       @> auto;
+       auto]]
+
+(* For odd m: each c_mod x m has 2*|c_mod x m| < m (strictly). *)
+lemma c_mod_range_odd a m =
+  m > 0 && m mod 2 = 1
+  ==> 2 * c_mod a m > -m && 2 * c_mod a m < m
+[@@by intros
+  @> [%use c_mod_range a m]
+  @> [%expand c_mod a m]
+  @> [%use Mod.Theorems.mod_range a m]
+  @> [%expand Mod.abs m]
+  @> auto]
+
+(* Strict square bound for odd m: 4*c^2 < m^2. *)
+lemma c_mod_sq_bound_strict c m =
+  m > 0 && m mod 2 = 1 && 2 * c > -m && 2 * c < m
+  ==> 4 * c * c < m * m
+[@@by intros @> nonlin ()]
+
+(* For odd m, 4*sum4 (centered m q) < 4*m*m strictly. *)
+lemma sum4_centered_bound_odd m q =
+  m > 0 && m mod 2 = 1
+  ==> 4 * sum4 (centered m q) < 4 * m * m
+[@@by intros
+  @> [%expand centered m q]
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> [%use c_mod_range_odd q.a m]
+  @> [%use c_mod_range_odd q.b m]
+  @> [%use c_mod_range_odd q.c m]
+  @> [%use c_mod_range_odd q.d m]
+  @> [%use c_mod_sq_bound_strict (c_mod q.a m) m]
+  @> [%use c_mod_sq_bound_strict (c_mod q.b m) m]
+  @> [%use c_mod_sq_bound_strict (c_mod q.c m) m]
+  @> [%use c_mod_sq_bound_strict (c_mod q.d m) m]
+  @> arith]
+
+(* For odd m, the descent step strictly decreases: mp < m. *)
+lemma descent_mp_strict_odd m q mp =
+  m > 0 && m mod 2 = 1 && sum4 (centered m q) = m * mp
+  ==> mp < m
+[@@by intros
+  @> [%use sum4_centered_bound_odd m q]
+  @> generalize (quote_term (sum4 (centered m q))) "s"
+  @> nonlin ()]
+
+(* When mp = m and m is even, each q.x has q.x mod m = m/2 (the unique
+   value in [0, m) with c_mod = m/2). *)
+lemma c_mod_eq_half_at_max c m =
+  m > 0 && m mod 2 = 0
+  && 4 * c * c = m * m
+  && 2 * c > -m && 2 * c <= m
+  ==> c = m / 2
+[@@by intros @> nonlin ()]
+
+(* Each c_mod = m/2 when sum4(centered) = m². Four lemmas to avoid
+   conjunction splitting. *)
+
+lemma c_mod_a_eq_half m q =
+  m > 0 && m mod 2 = 0 && sum4 (centered m q) = m * m
+  ==> c_mod q.a m = m / 2
+[@@by intros
+  @> [%simp_only sum4] @> [%simp_only sum_sq4] @> [%simp_only centered]
+  @> [%use c_mod_range q.a m] @> [%use c_mod_range q.b m]
+  @> [%use c_mod_range q.c m] @> [%use c_mod_range q.d m]
+  @> [%use c_mod_sq_bound (c_mod q.a m) m]
+  @> [%use c_mod_sq_bound (c_mod q.b m) m]
+  @> [%use c_mod_sq_bound (c_mod q.c m) m]
+  @> [%use c_mod_sq_bound (c_mod q.d m) m]
+  @> [%use c_mod_eq_half_at_max (c_mod q.a m) m]
+  @> generalize (quote_term (c_mod q.a m)) "ca"
+  @> generalize (quote_term (c_mod q.b m)) "cb"
+  @> generalize (quote_term (c_mod q.c m)) "cc"
+  @> generalize (quote_term (c_mod q.d m)) "cd"
+  @> nonlin ()]
+
+lemma c_mod_b_eq_half m q =
+  m > 0 && m mod 2 = 0 && sum4 (centered m q) = m * m
+  ==> c_mod q.b m = m / 2
+[@@by intros
+  @> [%simp_only sum4] @> [%simp_only sum_sq4] @> [%simp_only centered]
+  @> [%use c_mod_range q.a m] @> [%use c_mod_range q.b m]
+  @> [%use c_mod_range q.c m] @> [%use c_mod_range q.d m]
+  @> [%use c_mod_sq_bound (c_mod q.a m) m]
+  @> [%use c_mod_sq_bound (c_mod q.b m) m]
+  @> [%use c_mod_sq_bound (c_mod q.c m) m]
+  @> [%use c_mod_sq_bound (c_mod q.d m) m]
+  @> [%use c_mod_eq_half_at_max (c_mod q.b m) m]
+  @> generalize (quote_term (c_mod q.a m)) "ca"
+  @> generalize (quote_term (c_mod q.b m)) "cb"
+  @> generalize (quote_term (c_mod q.c m)) "cc"
+  @> generalize (quote_term (c_mod q.d m)) "cd"
+  @> nonlin ()]
+
+lemma c_mod_c_eq_half m q =
+  m > 0 && m mod 2 = 0 && sum4 (centered m q) = m * m
+  ==> c_mod q.c m = m / 2
+[@@by intros
+  @> [%simp_only sum4] @> [%simp_only sum_sq4] @> [%simp_only centered]
+  @> [%use c_mod_range q.a m] @> [%use c_mod_range q.b m]
+  @> [%use c_mod_range q.c m] @> [%use c_mod_range q.d m]
+  @> [%use c_mod_sq_bound (c_mod q.a m) m]
+  @> [%use c_mod_sq_bound (c_mod q.b m) m]
+  @> [%use c_mod_sq_bound (c_mod q.c m) m]
+  @> [%use c_mod_sq_bound (c_mod q.d m) m]
+  @> [%use c_mod_eq_half_at_max (c_mod q.c m) m]
+  @> generalize (quote_term (c_mod q.a m)) "ca"
+  @> generalize (quote_term (c_mod q.b m)) "cb"
+  @> generalize (quote_term (c_mod q.c m)) "cc"
+  @> generalize (quote_term (c_mod q.d m)) "cd"
+  @> nonlin ()]
+
+lemma c_mod_d_eq_half m q =
+  m > 0 && m mod 2 = 0 && sum4 (centered m q) = m * m
+  ==> c_mod q.d m = m / 2
+[@@by intros
+  @> [%simp_only sum4] @> [%simp_only sum_sq4] @> [%simp_only centered]
+  @> [%use c_mod_range q.a m] @> [%use c_mod_range q.b m]
+  @> [%use c_mod_range q.c m] @> [%use c_mod_range q.d m]
+  @> [%use c_mod_sq_bound (c_mod q.a m) m]
+  @> [%use c_mod_sq_bound (c_mod q.b m) m]
+  @> [%use c_mod_sq_bound (c_mod q.c m) m]
+  @> [%use c_mod_sq_bound (c_mod q.d m) m]
+  @> [%use c_mod_eq_half_at_max (c_mod q.d m) m]
+  @> generalize (quote_term (c_mod q.a m)) "ca"
+  @> generalize (quote_term (c_mod q.b m)) "cb"
+  @> generalize (quote_term (c_mod q.c m)) "cc"
+  @> generalize (quote_term (c_mod q.d m)) "cd"
+  @> nonlin ()]
+
+(* From c_mod q.x m = m/2, q.x mod m = m/2. *)
+lemma q_mod_half_in_eq m q =
+  m > 0 && m mod 2 = 0 && sum4 (centered m q) = m * m
+  ==>   q.a mod m = m / 2 && q.b mod m = m / 2
+      && q.c mod m = m / 2 && q.d mod m = m / 2
+[@@by intros
+  @> [%use c_mod_a_eq_half m q]
+  @> [%use c_mod_b_eq_half m q]
+  @> [%use c_mod_c_eq_half m q]
+  @> [%use c_mod_d_eq_half m q]
+  @> [%expand c_mod q.a m]
+  @> [%expand c_mod q.b m]
+  @> [%expand c_mod q.c m]
+  @> [%expand c_mod q.d m]
+  @> [%use Mod.Theorems.mod_range q.a m]
+  @> [%use Mod.Theorems.mod_range q.b m]
+  @> [%use Mod.Theorems.mod_range q.c m]
+  @> [%use Mod.Theorems.mod_range q.d m]
+  @> [%expand Mod.abs m]
+  @> arith]
+
+(* Key: m² | sum4 q in the equality case. We first show sum4 q = K * m² for an
+   explicit integer K. *)
+lemma sum4_eq_K_m_sq m q =
+  m > 0 && m mod 2 = 0
+  && q.a mod m = m / 2 && q.b mod m = m / 2
+  && q.c mod m = m / 2 && q.d mod m = m / 2
+  ==> sum4 q
+      = ( (q.a / m) * (q.a / m) + (q.a / m)
+        + (q.b / m) * (q.b / m) + (q.b / m)
+        + (q.c / m) * (q.c / m) + (q.c / m)
+        + (q.d / m) * (q.d / m) + (q.d / m)
+        + 1) * (m * m)
+[@@by intros
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> [%use Mod.Theorems.div_mod q.a m]
+  @> [%use Mod.Theorems.div_mod q.b m]
+  @> [%use Mod.Theorems.div_mod q.c m]
+  @> [%use Mod.Theorems.div_mod q.d m]
+  @> [%use Mod.Theorems.div_mod m 2]
+  @> generalize (quote_term (q.a / m)) "ka"
+  @> generalize (quote_term (q.b / m)) "kb"
+  @> generalize (quote_term (q.c / m)) "kc"
+  @> generalize (quote_term (q.d / m)) "kd"
+  @> generalize (quote_term (m / 2)) "h"
+  @> nonlin ()]
+
+lemma m_sq_div_sum4_in_eq m q =
+  m > 0 && m mod 2 = 0 && sum4 (centered m q) = m * m
+  ==> Inf_primes.divides (m * m) (sum4 q)
+[@@by intros
+  @> [%use q_mod_half_in_eq m q]
+  @> [%use sum4_eq_K_m_sq m q]
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.mod_mul_left_zero
+       ( (q.a / m) * (q.a / m) + (q.a / m)
+       + (q.b / m) * (q.b / m) + (q.b / m)
+       + (q.c / m) * (q.c / m) + (q.c / m)
+       + (q.d / m) * (q.d / m) + (q.d / m)
+       + 1)
+       (m * m)]
+  @> auto]
+
+(* The contradiction for even m with mp = m: m² | sum4 q = m*p, so m | p,
+   contradicting 1 < m < p prime. *)
+lemma descent_mp_eq_m_contradiction p m q =
+  Inf_primes.is_prime p && 1 < m && m < p && m mod 2 = 0
+  && sum4 q = m * p && sum4 (centered m q) = m * m
+  ==> false
+[@@by intros
+  @> [%use m_sq_div_sum4_in_eq m q]
+  @> [%use m_sq_div_mp_implies_m_div_p m p]
+  @> [%simp_only Inf_primes.divides]
+  @> [%simp_only Inf_primes.is_prime]
+  @> [%use Fta.prime_divisor_is_1_or_p p m]
+  @> auto]
+
+(* Strict mp < m (combining odd and even cases). *)
+lemma descent_mp_strict p m q mp =
+  Inf_primes.is_prime p && 1 < m && m < p
+  && sum4 q = m * p && sum4 (centered m q) = m * mp
+  ==> mp < m
+[@@by intros
+  @> [%cases (m mod 2 = 1)]
+  @>| [intros @> [%use descent_mp_strict_odd m q mp] @> auto;
+       intros
+       @> [%cases (mp = m)]
+       @>| [intros
+            @> [%use descent_mp_eq_m_contradiction p m q]
+            @> auto;
+            intros @> [%use descent_mp_upper m q mp] @> auto]]]
+
+(* ============================================================
+   Descent recursion: starting from m * p = sum4 q with 1 <= m < p,
+   iterate the descent step until m = 1, leaving sum4 = p.
+   ============================================================ *)
+
+(* The descent loop. Termination: m strictly decreases.
+   Guard ensures termination even on bad inputs. *)
+let rec descent_loop (m : int) (q : sq4) : sq4 =
+  if m <= 1 then q
+  else
+    let mp = sum4 (centered m q) / m in
+    if mp <= 0 || mp >= m then q  (* unreachable under correct hypotheses *)
+    else descent_loop mp (descent_q m q)
+[@@measure Ordinal.of_int (max 0 m)]
+
+(* Custom induction scheme matching descent_loop's recursion structure. *)
+let rec descent_ind (m : int) (q : sq4) : int =
+  if m <= 1 then 0
+  else
+    let mp = sum4 (centered m q) / m in
+    if mp <= 0 || mp >= m then 0
+    else 1 + descent_ind mp (descent_q m q)
+[@@measure Ordinal.of_int (max 0 m)]
+
+let crush = Tactic.unroll 10
+
+(* Correctness: induct via descent_ind, close each branch with surgical tactics. *)
+theorem descent_loop_correct p m q =
+  Inf_primes.is_prime p && 1 <= m && m < p && sum4 q = m * p
+  ==> sum4 (descent_loop m q) = p
+[@@by
+  let close_sub =
+    intros
+    @> [%subgoal sum4 (centered m q) = m * (sum4 (centered m q) / m)]
+    @>| [intros
+         @> [%cases (m <= 1)]
+         @>| [crush;
+              intros
+              @> [%use descent_step_eq m q p (sum4 (centered m q) / m)]
+              @> [%use descent_mp_pos p m q (sum4 (centered m q) / m)]
+              @> [%use descent_mp_strict p m q (sum4 (centered m q) / m)]
+              @> [%expand descent_loop m q]
+              @> crush];
+         (* prove the subgoal: sum4(centered) = m * (sum4(centered)/m) *)
+         [%use Mod.Theorems.mod_mul_left_zero p m]
+         @> [%use m_div_sum4_centered m q]
+         @> [%simp_only Inf_primes.divides]
+         @> [%use Mod.Theorems.div_mod (sum4 (centered m q)) m]
+         @> crush]
+  in
+  induction ~id:[%id descent_ind] () @>>| close_sub]
+[@@disable c_mod, descent_q, centered, sum4]
+
+(* ============================================================
+   PHASE D: every prime is a sum of four squares.
+   ============================================================ *)
+
+(* For odd prime p, the seed gives initial m * p = x^2 + y^2 + 1^2 + 0^2 *)
+let initial_q (p : int) : sq4 =
+  { a = find_seed_x p; b = find_seed_y p; c = 1; d = 0 }
+
+let initial_m (p : int) : int = sum4 (initial_q p) / p
+
+(* For odd prime p (p >= 3), p | sum4 (initial_q p).
+   Helper: pin down find_seed_y p = seed_y p (find_seed_x p) ((p-1)/2). *)
+lemma find_seed_y_eq p =
+  Inf_primes.is_prime p && p >= 3
+  ==> find_seed_y p = seed_y p (find_seed_x p) ((p - 1) / 2)
+[@@by intros
+  @> [%use seed_exists_odd_prime p]
+  @> [%use seed_x_idx_valid p ((p - 1) / 2)]
+  @> [%expand find_seed_y p]
+  @> crush]
+
+lemma p_div_initial_sum p =
+  Inf_primes.is_prime p && p >= 3
+  ==> Inf_primes.divides p (sum4 (initial_q p))
+[@@by intros
+  @> [%use seed_exists_odd_prime p]
+  @> [%use seed_x_idx_valid p ((p - 1) / 2)]
+  @> [%subgoal find_seed_x p = seed_x_idx p ((p - 1) / 2)]
+  @>| [intros
+       @> [%use seed_y_valid p (find_seed_x p) ((p - 1) / 2)]
+       @> [%use find_seed_y_eq p]
+       @> [%simp_only initial_q]
+       @> [%simp_only sum4]
+       @> [%simp_only sum_sq4]
+       @> [%simp_only Inf_primes.divides]
+       @> crush;
+       [%expand find_seed_x p] @> crush]]
+
+(* Hence sum4 (initial_q p) = m * p where m = sum4 (initial_q p) / p. *)
+lemma initial_q_sum p =
+  Inf_primes.is_prime p && p >= 3
+  ==> sum4 (initial_q p) = (initial_m p) * p
+[@@by intros
+  @> [%use p_div_initial_sum p]
+  @> [%simp_only initial_m]
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.div_mod (sum4 (initial_q p)) p]
+  @> crush]
+
+(* sum4 (initial_q p) > 0  (since +1 from c^2 with c=1). *)
+lemma initial_q_sum_pos p =
+  Inf_primes.is_prime p && p >= 3
+  ==> sum4 (initial_q p) >= 1
+[@@by intros
+  @> [%simp_only initial_q]
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> nonlin ()]
+
+(* Square bound: 0 <= x <= h ==> x*x <= h*h. *)
+lemma sq_bound x h =
+  0 <= x && x <= h ==> x * x <= h * h
+[@@by nonlin ()]
+
+(* Polynomial bound: if 0 <= x, y <= (p-1)/2 and p >= 3, then
+   x^2 + y^2 + 1 < p^2. *)
+lemma seed_sum_bound p x y =
+  p >= 3 && 0 <= x && x <= (p - 1) / 2
+  && 0 <= y && y <= (p - 1) / 2
+  ==> x * x + y * y + 1 < p * p
+[@@by intros
+  @> [%use sq_bound x ((p - 1) / 2)]
+  @> [%use sq_bound y ((p - 1) / 2)]
+  @> [%use Mod.Theorems.div_mod (p - 1) 2]
+  @> [%use Mod.Theorems.mod_range (p - 1) 2]
+  @> [%expand Mod.abs 2]
+  @> generalize (quote_term (x * x)) "xx"
+  @> generalize (quote_term (y * y)) "yy"
+  @> generalize (quote_term ((p - 1) / 2)) "h"
+  @> generalize (quote_term ((p - 1) mod 2)) "r"
+  @> nonlin ()]
+
+(* Bound: sum4 (initial_q p) < p*p, since 0 <= x,y <= (p-1)/2. *)
+lemma initial_q_sum_lt p =
+  Inf_primes.is_prime p && p >= 3
+  ==> sum4 (initial_q p) < p * p
+[@@by intros
+  @> [%use seed_exists_odd_prime p]
+  @> [%use seed_x_idx_valid p ((p - 1) / 2)]
+  @> [%subgoal find_seed_x p = seed_x_idx p ((p - 1) / 2)]
+  @>| [intros
+       @> [%use seed_y_valid p (find_seed_x p) ((p - 1) / 2)]
+       @> [%use find_seed_y_eq p]
+       @> [%subgoal 0 <= find_seed_y p && find_seed_y p <= (p - 1) / 2]
+       @>| [intros
+            @> [%use seed_sum_bound p (find_seed_x p) (find_seed_y p)]
+            @> [%simp_only initial_q]
+            @> [%simp_only sum4]
+            @> [%simp_only sum_sq4]
+            @> crush;
+            crush];
+       [%expand find_seed_x p] @> crush]]
+
+(* Initial m is at least 1: since p | sum4 and sum4 > 0, sum4 >= p, so m >= 1. *)
+lemma initial_m_pos p =
+  Inf_primes.is_prime p && p >= 3
+  ==> initial_m p >= 1
+[@@by intros
+  @> [%use p_div_initial_sum p]
+  @> [%use initial_q_sum_pos p]
+  @> [%simp_only initial_m]
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.div_mod (sum4 (initial_q p)) p]
+  @> generalize (quote_term (sum4 (initial_q p))) "s"
+  @> generalize (quote_term (sum4 (initial_q p) / p)) "q"
+  @> nonlin ()]
+
+(* Initial m is less than p: sum4 < p^2, so m = sum4/p < p. *)
+lemma initial_m_lt_p p =
+  Inf_primes.is_prime p && p >= 3
+  ==> initial_m p < p
+[@@by intros
+  @> [%use initial_q_sum_lt p]
+  @> [%use initial_q_sum p]
+  @> [%simp_only initial_m]
+  @> nonlin ()]
+
+(* ============================================================
+   Witness for primes: sum of 4 squares.
+   ============================================================ *)
+
+(* For p = 2, use (1,1,0,0).  For odd primes p >= 3, run the descent. *)
+let prime_witness (p : int) : sq4 =
+  if p = 2 then { a = 1; b = 1; c = 0; d = 0 }
+  else descent_loop (initial_m p) (initial_q p)
+
+(* Main theorem of Phase D: every prime is a sum of 4 squares. *)
+theorem prime_is_sum4 p =
+  Inf_primes.is_prime p
+  ==> sum4 (prime_witness p) = p
+[@@by intros
+  @> [%cases (p = 2)]
+  @>| [[%simp_only prime_witness] @> [%simp_only sum4] @> [%simp_only sum_sq4] @> auto;
+       intros
+       @> [%use initial_m_pos p]
+       @> [%use initial_m_lt_p p]
+       @> [%use initial_q_sum p]
+       @> [%use descent_loop_correct p (initial_m p) (initial_q p)]
+       @> [%simp_only prime_witness]
+       @> crush]]
+
+(* ============================================================
+   PHASE E: every n >= 0 is a sum of four squares.
+
+   Use Euler four-square identity to combine prime witnesses.
+   ============================================================ *)
+
+(* Combine a list of primes by multiplying their witnesses via Euler. *)
+let rec prod_prime_witnesses (ps : int list) : sq4 =
+  match ps with
+  | [] -> { a = 1; b = 0; c = 0; d = 0 }
+  | p :: ps' -> prod4 (prime_witness p) (prod_prime_witnesses ps')
+
+(* Cons recurrence for prod_prime_witnesses (Euler identity). *)
+lemma sum4_prod_prime_witnesses_cons ps =
+  ps <> []
+  ==> sum4 (prod_prime_witnesses ps) =
+        sum4 (prime_witness (List.hd ps)) * sum4 (prod_prime_witnesses (List.tl ps))
+[@@by intros
+  @> [%expand prod_prime_witnesses ps]
+  @> [%use sum4_prod4 (prime_witness (List.hd ps)) (prod_prime_witnesses (List.tl ps))]
+  @> auto]
+
+(* Base case: sum4 of empty product = 1. *)
+lemma sum4_prod_prime_witnesses_nil =
+  sum4 (prod_prime_witnesses []) = 1
+[@@by [%expand prod_prime_witnesses []]
+  @> [%simp_only sum4]
+  @> [%simp_only sum_sq4]
+  @> auto]
+
+(* sum4 of prod_prime_witnesses = prod_list of the primes. *)
+lemma sum4_prod_prime_witnesses ps =
+  Fta.all_prime ps
+  ==> sum4 (prod_prime_witnesses ps) = Fta.prod_list ps
+[@@by induction ()
+  @>| [[%use sum4_prod_prime_witnesses_nil] @> auto;
+       intros
+       @> [%use sum4_prod_prime_witnesses_cons ps]
+       @> [%use prime_is_sum4 (List.hd ps)]
+       @> auto]]
+[@@disable prod_prime_witnesses, sum4]
+
+(* Witness for n: handles n = 0 and n = 1 directly,
+   for n >= 2 uses prime factorization. *)
+let witness_for (n : int) : sq4 =
+  if n <= 0 then { a = 0; b = 0; c = 0; d = 0 }
+  else if n = 1 then { a = 1; b = 0; c = 0; d = 0 }
+  else prod_prime_witnesses (Fta.prime_factors n)
+
+eval sum4 (witness_for 0)
+eval sum4 (witness_for 1)
+eval sum4 (witness_for 7)
+eval sum4 (witness_for 23)
+eval sum4 (witness_for 100)
+
+(* At last, our main result (in wrapped form)! *)
+
+theorem four_squares_theorem_wrapped n =
+  n >= 0 ==> sum4 (witness_for n) = n
+[@@by intros
+  @> [%cases (n = 0)]
+  @>| [[%simp_only witness_for] @> [%simp_only sum4, sum_sq4] @> auto;
+       intros
+       @> [%cases (n = 1)]
+       @>| [[%simp_only witness_for] @> [%simp_only sum4, sum_sq4] @> auto;
+            intros
+            @> [%use Fta.prime_factorization_exists n]
+            @> [%use sum4_prod_prime_witnesses (Fta.prime_factors n)]
+            @> [%simp_only witness_for]
+            @> crush]]]
+
+(* Theorem 19 (Lagrange): every non-negative integer is a sum of 4 squares! *)
+
+theorem four_squares_theorem n =
+  n >= 0 ==>
+  let w = witness_for n in
+  n = (w.a * w.a) + (w.b * w.b) + (w.c * w.c) + (w.d * w.d)
+[@@by [%use four_squares_theorem_wrapped n] @> crush]

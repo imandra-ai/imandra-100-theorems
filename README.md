@@ -4,13 +4,14 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **30/100**:
+Currently, we have proven **31/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
 4\. [Pythagorean Theorem](#thm-4)  
 10\. [Euler's Generalization of Fermat's Little Theorem](#thm-10)  
 11\. [Infinitude of Primes](#thm-11)  
+19\. [Lagrange's Four-Square Theorem](#thm-19)  
 30\. [The Ballot Problem](#thm-30)  
 34\. [Divergence of the Harmonic Series](#thm-34)  
 38\. [Arithmetic Mean/Geometric Mean](#thm-38)  
@@ -146,6 +147,30 @@ theorem euler a n =
 theorem infinitude_of_primes n =
   let bigger_prime = euclid (abs n) in
   is_prime bigger_prime && bigger_prime > n
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-19"></a>
+## 19. Lagrange's Four-Square Theorem
+
+[Source: src/four_squares.iml](src/four_squares.iml)
+
+*Statement (informal):*
+Every non-negative integer can be written as the sum of four integer squares:
+
+$$\forall n \ge 0,\ \exists a, b, c, d \in \mathbb{Z},\quad n = a^2 + b^2 + c^2 + d^2.$$
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem four_squares_theorem n =
+  n >= 0 ==>
+  let w = witness_for n in
+  n = (w.a * w.a) + (w.b * w.b) + (w.c * w.c) + (w.d * w.d)
 ```
 </details>
 
