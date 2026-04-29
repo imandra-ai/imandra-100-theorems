@@ -1,0 +1,760 @@
+(* A proof of Fermat's Two-Square Theorem in Imandra.
+   Theorem 20 in the 100 Theorems list.
+
+   Every prime p with p mod 4 = 1 is the sum of two squares.
+
+   We follow the classical descent strategy:
+
+   - Brahmagupta-Fibonacci identity: (a^2+b^2)(c^2+d^2) is a sum of two
+     squares (the modulus of a Gaussian-integer product).
+
+   - For p ≡ 1 (mod 4), Wilson's theorem yields ((p-1)/2)!^2 ≡ -1 (mod p),
+     so we obtain an initial m*p = x^2 + 1^2 with 1 ≤ m < p.
+
+   - Infinite descent on m: from m*p = a^2 + b^2 with 1 < m < p, the
+     centered residues (a', b') of (a, b) mod m satisfy m | (a'^2+b'^2)
+     and (a a' + b b', a b' - b a') is component-wise divisible by m,
+     giving m' p = (a a' + b b')^2/m^2 + (a b' - b a')^2/m^2 with m' < m.
+
+   Grant Passmore, Imandra
+ *)
+
+[@@@import "inf_primes.iml"]
+[@@@import "fta.iml"]
+[@@@import "mod.iml"]
+[@@@import "gcd.iml"]
+[@@@import "combinations.iml"]
+[@@@import "wilson.iml"]
+
+open Mod.Theorems
+
+(* ============================================================
+   PHASE A: The Brahmagupta-Fibonacci identity.
+   ============================================================ *)
+
+type sq2 = { a : int; b : int }
+
+let sum2 (q : sq2) : int = q.a * q.a + q.b * q.b
+
+(* Brahmagupta-Fibonacci product on Gaussian integers:
+   (a + bi)(c + di) = (ac - bd) + (ad + bc) i. *)
+let prod2 (q : sq2) (r : sq2) : sq2 =
+  { a = q.a * r.a - q.b * r.b;
+    b = q.a * r.b + q.b * r.a }
+
+(* The Brahmagupta-Fibonacci identity. *)
+theorem sum2_prod2 q r =
+  sum2 q * sum2 r = sum2 (prod2 q r)
+[@@by simplify () @> nonlin ()]
+
+eval sum2 { a = 3; b = 4 }                     (* 25 *)
+eval sum2 (prod2 { a = 1; b = 1 } { a = 2; b = 1 })  (* (1*2-1*1)^2 + (1*1+1*2)^2 = 1 + 9 = 10 = 2*5 ✓ *)
+
+(* ============================================================
+   PHASE B: square root of -1 mod p, for primes p ≡ 1 (mod 4).
+
+   Strategy: pair up factors in (p-1)! by i and (p-i):
+     (p-1)! = (1 * 2 * ... * (p-1)/2) * ((p+1)/2 * ... * (p-1))
+     The "upper half" reduces mod p:  (p-i) ≡ -i (mod p),
+     so  ((p+1)/2)*...*(p-1) ≡ (-1)^((p-1)/2) * ((p-1)/2)!  (mod p).
+     Hence  (p-1)! ≡ (-1)^((p-1)/2) * ((p-1)/2)!^2  (mod p).
+   By Wilson:  (p-1)! ≡ -1  (mod p).
+   For  p ≡ 1 (mod 4): (p-1)/2 is even, so ((p-1)/2)!^2 ≡ -1 (mod p).
+   ============================================================ *)
+
+(* upper_prod p k = (p-1) * (p-2) * ... * (p-k), the "upper k factors" of p!. *)
+let rec upper_prod (p : int) (k : int) : int =
+  if k <= 0 then 1
+  else (p - k) * upper_prod p (k - 1)
+[@@measure Ordinal.of_int (max 0 k)]
+
+eval upper_prod 7 3   (* (7-3)*(7-2)*(7-1) = 4*5*6 = 120 *)
+eval upper_prod 11 5  (* 6*7*8*9*10 = 30240 *)
+
+(* Sign-by-parity: 1 if k even, -1 if k odd. *)
+let parity_sign (k : int) : int = if k mod 2 = 0 then 1 else -1
+
+eval parity_sign 4    (* 1 *)
+eval parity_sign 5    (* -1 *)
+
+(* Parity flip: parity_sign k = -parity_sign (k-1)  for k >= 1. *)
+lemma parity_sign_flip k =
+  k >= 1 ==> parity_sign k = - parity_sign (k - 1)
+[@@by intros
+  @> [%use Mod.Theorems.div_mod k 2]
+  @> [%use Mod.Theorems.mod_range k 2]
+  @> [%expand Mod.abs 2]
+  @> [%expand parity_sign k]
+  @> [%expand parity_sign (k - 1)]
+  @> auto]
+
+(* upper_prod p k ≡ (1 - 2*(k mod 2)) * fact k  (mod p),
+   i.e. fact k when k even, -fact k when k odd. *)
+lemma upper_prod_signed p k =
+  p >= 2 && k >= 0
+  ==> Inf_primes.divides p
+        (upper_prod p k - (1 - 2 * (k mod 2)) * Combinations.fact k)
+[@@by induction ~id:[%id upper_prod] ()
+  @>| [(* Base k = 0. *)
+       intros
+       @> [%cases (k = 0)]
+       @>| [intros
+            @> [%use Combinations.fact_zero]
+            @> [%expand upper_prod p k]
+            @> [%simp_only Inf_primes.divides]
+            @> auto;
+            auto];
+       (* Step: k >= 1.  Use IH on k-1 (opposite parity). *)
+       intros
+       @> [%use Combinations.fact_succ k]
+       @> [%expand upper_prod p k]
+       @> [%use Mod.Theorems.div_mod (k - 1) 2]
+       @> [%use Mod.Theorems.mod_range (k - 1) 2]
+       @> [%use Mod.Theorems.div_mod k 2]
+       @> [%use Mod.Theorems.mod_range k 2]
+       @> [%expand Mod.abs 2]
+       @> [%simp_only Inf_primes.divides]
+       @> [%use Mod.Theorems.div_mod
+            (upper_prod p (k - 1) - (1 - 2 * ((k - 1) mod 2)) * Combinations.fact (k - 1)) p]
+       @> [%use Mod.Theorems.mod_mul_left_zero
+            ((1 - 2 * ((k - 1) mod 2)) * Combinations.fact (k - 1)
+             + (p - k)
+               * ((upper_prod p (k - 1)
+                   - (1 - 2 * ((k - 1) mod 2)) * Combinations.fact (k - 1)) / p)) p]
+       @> nonlin ()]]
+
+(* Specialize to parity_sign k. *)
+lemma upper_prod_mod p k =
+  p >= 2 && k >= 0
+  ==> Inf_primes.divides p (upper_prod p k - parity_sign k * Combinations.fact k)
+[@@by intros
+  @> [%use upper_prod_signed p k]
+  @> [%use Mod.Theorems.mod_range k 2]
+  @> [%expand Mod.abs 2]
+  @> [%expand parity_sign k]
+  @> [%simp_only Inf_primes.divides]
+  @> auto]
+
+(* Splitting identity: upper_prod (n+1) k * fact (n-k) = fact n, for 0 <= k <= n.
+   Equivalently, (n!) = ((n)*(n-1)*...*(n-k+1)) * (n-k)!. *)
+lemma upper_prod_times_fact n k =
+  k >= 0 && k <= n
+  ==> upper_prod (n + 1) k * Combinations.fact (n - k) = Combinations.fact n
+[@@by induction ~id:[%id upper_prod] ()
+  @>| [(* Base k = 0. *)
+       intros
+       @> [%cases (k = 0)]
+       @>| [intros @> [%expand upper_prod (n + 1) k] @> auto;
+            auto];
+       (* Step k > 0. *)
+       intros
+       @> [%expand upper_prod (n + 1) k]
+       @> [%use Combinations.fact_succ (n - k + 1)]
+       @> auto]]
+
+(* Specialize: fact (p-1) = upper_prod p ((p-1)/2) * fact ((p-1)/2), for p odd >= 1. *)
+lemma fact_split p =
+  p >= 1 && p mod 2 = 1
+  ==> Combinations.fact (p - 1)
+       = upper_prod p ((p - 1) / 2) * Combinations.fact ((p - 1) / 2)
+[@@by intros
+  @> [%use upper_prod_times_fact (p - 1) ((p - 1) / 2)]
+  @> [%use Mod.Theorems.div_mod (p - 1) 2]
+  @> [%use Mod.Theorems.mod_range (p - 1) 2]
+  @> [%use Mod.Theorems.div_mod p 2]
+  @> [%use Mod.Theorems.mod_range p 2]
+  @> [%expand Mod.abs 2]
+  @> nonlin ()]
+
+(* For prime p with p ≡ 1 (mod 4): parity_sign ((p-1)/2) = 1.
+   I.e., (p-1)/2 is even. *)
+lemma parity_sign_p_mod_4 p =
+  p >= 5 && p mod 4 = 1
+  ==> parity_sign ((p - 1) / 2) = 1
+[@@by intros
+  @> [%expand parity_sign ((p - 1) / 2)]
+  @> [%use Mod.Theorems.div_mod p 4]
+  @> [%use Mod.Theorems.mod_range p 4]
+  @> [%use Mod.Theorems.div_mod ((p - 1) / 2) 2]
+  @> [%use Mod.Theorems.mod_range ((p - 1) / 2) 2]
+  @> [%expand Mod.abs 2]
+  @> [%expand Mod.abs 4]
+  @> nonlin ()]
+
+(* For prime p, p mod 4 = 1 ==> p mod 2 = 1 (and p >= 5). *)
+lemma prime_1_mod_4_odd p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==> p mod 2 = 1 && p >= 5
+[@@by intros
+  @> [%use Mod.Theorems.div_mod p 4]
+  @> [%use Mod.Theorems.mod_range p 4]
+  @> [%use Mod.Theorems.div_mod p 2]
+  @> [%use Mod.Theorems.mod_range p 2]
+  @> [%expand Mod.abs 4]
+  @> [%expand Mod.abs 2]
+  @> auto]
+
+(* Intermediate: p divides fact(p-1) - fact((p-1)/2)^2, for prime p ≡ 1 (mod 4). *)
+lemma fact_div_sq_div p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==> Inf_primes.divides p
+        (Combinations.fact (p - 1)
+         - Combinations.fact ((p - 1) / 2) * Combinations.fact ((p - 1) / 2))
+[@@by intros
+  @> [%use prime_1_mod_4_odd p]
+  @> [%use fact_split p]
+  @> [%use upper_prod_mod p ((p - 1) / 2)]
+  @> [%use parity_sign_p_mod_4 p]
+  @> [%use Mod.Theorems.mod_mul_preserves_zero (Combinations.fact ((p - 1) / 2))
+       (upper_prod p ((p - 1) / 2)
+        - parity_sign ((p - 1) / 2) * Combinations.fact ((p - 1) / 2)) p]
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.div_mod
+       (Combinations.fact ((p - 1) / 2)
+        * (upper_prod p ((p - 1) / 2)
+           - parity_sign ((p - 1) / 2) * Combinations.fact ((p - 1) / 2))) p]
+  @> generalize (quote_term (upper_prod p ((p - 1) / 2))) "u"
+  @> generalize (quote_term (Combinations.fact ((p - 1) / 2))) "f"
+  @> generalize (quote_term (Combinations.fact (p - 1))) "g"
+  @> nonlin ()]
+
+(* Main of Phase B: for prime p ≡ 1 (mod 4),
+   ((p-1)/2)!^2 ≡ -1 (mod p).
+
+   Set m = (p-1)/2, F = fact m, U = upper_prod p m.  Then:
+     IH (upper_prod_mod):   p | (U - F)        [since parity_sign m = 1]
+     fact_split:            U * F = fact(p-1)
+     Wilson:                fact(p-1) ≡ -1 (mod p),  i.e., p | (U*F + 1)
+     mul by F to IH:        p | F*(U - F) = U*F - F^2
+     subtract:              p | (U*F + 1) - (U*F - F^2) = F^2 + 1.
+*)
+theorem half_fact_sq_eq_neg_one p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==> Inf_primes.divides p
+        (Combinations.fact ((p - 1) / 2) * Combinations.fact ((p - 1) / 2) + 1)
+[@@by intros
+  @> [%use prime_1_mod_4_odd p]
+  @> [%use Wilson.wilson p]
+  @> [%use fact_div_sq_div p]
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.div_mod (Combinations.fact (p - 1)) p]
+  @> [%use Mod.Theorems.div_mod
+       (Combinations.fact (p - 1)
+        - Combinations.fact ((p - 1) / 2) * Combinations.fact ((p - 1) / 2)) p]
+  @> [%use Mod.Theorems.mod_mul_left_zero
+       (Combinations.fact (p - 1) / p + 1
+        - (Combinations.fact (p - 1)
+           - Combinations.fact ((p - 1) / 2) * Combinations.fact ((p - 1) / 2)) / p) p]
+  @> nonlin ()]
+
+(* ============================================================
+   PHASE C: descent step for two squares.
+
+   Given m*p = a^2 + b^2 with 1 < m < p, construct
+   m'*p = a'^2 + b'^2 with m' < m, using centered residues
+   and the Brahmagupta-Fibonacci identity.
+   ============================================================ *)
+
+(* Centered residue: c_mod a m is in (-m/2, m/2], congruent to a mod m. *)
+let c_mod (a : int) (m : int) : int =
+  let r = a mod m in
+  if 2 * r > m then r - m else r
+
+eval c_mod 7 5       (* 2 *)
+eval c_mod 8 5       (* -2 *)
+eval c_mod 10 5      (* 0 *)
+
+(* c_mod a m has same residue mod m as a. *)
+lemma c_mod_mod_eq a m =
+  m > 0 ==> (c_mod a m) mod m = a mod m
+[@@by intros
+  @> [%expand c_mod a m]
+  @> [%cases (2 * (a mod m) > m)]
+  @>| [intros
+       @> [%use Mod.Theorems.mod_add (a mod m) (-m) m]
+       @> [%use Mod.Theorems.mod_mul_left_zero (-1) m]
+       @> [%use Mod.Theorems.mod_idem a m]
+       @> auto;
+       intros
+       @> [%use Mod.Theorems.mod_idem a m]
+       @> auto]]
+
+(* m | (a - c_mod a m). *)
+lemma c_mod_congr a m =
+  m > 0 ==> Inf_primes.divides m (a - c_mod a m)
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%use c_mod_mod_eq a m]
+  @> [%use Mod.Theorems.mod_add a (-c_mod a m) m]
+  @> [%use Mod.Theorems.mod_add (c_mod a m) (-c_mod a m) m]
+  @> [%use Mod.Theorems.mod_mul_left_zero ((c_mod a m) / m) m]
+  @> [%use Mod.Theorems.div_mod (-c_mod a m) m]
+  @> auto]
+
+(* 2|c_mod a m| <= m. *)
+lemma c_mod_range a m =
+  m > 0 ==> 2 * c_mod a m > -m && 2 * c_mod a m <= m
+[@@by intros
+  @> [%expand c_mod a m]
+  @> [%use Mod.Theorems.mod_range a m]
+  @> [%expand Mod.abs m]
+  @> auto]
+
+(* (c_mod a m)^2 mod m = a^2 mod m. *)
+lemma c_mod_sq_eq a m =
+  m > 0 ==> (c_mod a m) * (c_mod a m) mod m = (a * a) mod m
+[@@by intros
+  @> [%use c_mod_mod_eq a m]
+  @> [%use Mod.Theorems.mod_mul a a m]
+  @> [%use Mod.Theorems.mod_mul (c_mod a m) (c_mod a m) m]
+  @> auto]
+
+(* Centered tuple. *)
+let centered (m : int) (q : sq2) : sq2 =
+  { a = c_mod q.a m; b = c_mod q.b m }
+
+(* sum2 of centered residues has same mod m as sum2 q. *)
+lemma sum2_centered_mod m q =
+  m > 0 ==> sum2 (centered m q) mod m = sum2 q mod m
+[@@by intros
+  @> [%simp_only sum2]
+  @> [%expand centered m q]
+  @> [%use c_mod_sq_eq q.a m]
+  @> [%use c_mod_sq_eq q.b m]
+  @> [%use Mod.Theorems.mod_add (q.a * q.a) (q.b * q.b) m]
+  @> [%use Mod.Theorems.mod_add ((c_mod q.a m) * (c_mod q.a m))
+       ((c_mod q.b m) * (c_mod q.b m)) m]
+  @> auto]
+
+(* If 2|c| <= m, then 4*c^2 <= m^2. *)
+lemma c_mod_sq_bound c m =
+  m > 0 && 2 * c > -m && 2 * c <= m
+  ==> 4 * c * c <= m * m
+[@@by intros @> nonlin ()]
+
+(* sum2 (centered m q) <= m^2 / 2. *)
+lemma sum2_centered_bound m q =
+  m > 0 ==> 4 * sum2 (centered m q) <= 2 * m * m
+[@@by intros
+  @> [%expand centered m q]
+  @> [%simp_only sum2]
+  @> [%use c_mod_range q.a m]
+  @> [%use c_mod_range q.b m]
+  @> [%use c_mod_sq_bound (c_mod q.a m) m]
+  @> [%use c_mod_sq_bound (c_mod q.b m) m]
+  @> arith]
+
+(* m | sum2 (centered m q) when m | sum2 q. *)
+lemma m_div_sum2_centered m q =
+  m > 0 && Inf_primes.divides m (sum2 q)
+  ==> Inf_primes.divides m (sum2 (centered m q))
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%use sum2_centered_mod m q]
+  @> auto]
+
+(* ============================================================
+   Conjugate and the divisibility of prod2 components by m.
+   conj2 q = { a = q.a; b = -q.b }.
+
+   prod2 q (conj2 r) = { a = q.a*r.a + q.b*r.b;
+                         b = -q.a*r.b + q.b*r.a }.
+   Each component is divisible by m when q ≡ r (mod m) and m | sum2 r.
+   ============================================================ *)
+
+let conj2 (q : sq2) : sq2 = { a = q.a; b = -q.b }
+
+lemma sum2_conj2 q =
+  sum2 (conj2 q) = sum2 q
+[@@by [%expand conj2 q] @> [%simp_only sum2] @> nonlin ()]
+
+(* m | (prod2 q (conj2 r)).a, when q ≡ r mod m and m | sum2 r. *)
+lemma prod2_a_div_m m q r =
+  m > 0
+  && Inf_primes.divides m (q.a - r.a)
+  && Inf_primes.divides m (q.b - r.b)
+  && Inf_primes.divides m (sum2 r)
+  ==> Inf_primes.divides m (prod2 q (conj2 r)).a
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%simp_only sum2]
+  @> [%simp_only conj2]
+  @> [%simp_only prod2]
+  @> [%use Mod.Theorems.div_mod (q.a - r.a) m]
+  @> [%use Mod.Theorems.div_mod (q.b - r.b) m]
+  @> [%use Mod.Theorems.div_mod (r.a * r.a + r.b * r.b) m]
+  @> [%use Mod.Theorems.mod_mul_left_zero
+       ((r.a * r.a + r.b * r.b) / m
+        + r.a * ((q.a - r.a) / m)
+        + r.b * ((q.b - r.b) / m)) m]
+  @> nonlin ()]
+
+(* m | (prod2 q (conj2 r)).b, when q ≡ r mod m. *)
+lemma prod2_b_div_m m q r =
+  m > 0
+  && Inf_primes.divides m (q.a - r.a)
+  && Inf_primes.divides m (q.b - r.b)
+  ==> Inf_primes.divides m (prod2 q (conj2 r)).b
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%simp_only conj2]
+  @> [%simp_only prod2]
+  @> [%use Mod.Theorems.div_mod (q.a - r.a) m]
+  @> [%use Mod.Theorems.div_mod (q.b - r.b) m]
+  @> [%use Mod.Theorems.mod_mul_left_zero
+       (-r.b * ((q.a - r.a) / m) + r.a * ((q.b - r.b) / m)) m]
+  @> nonlin ()]
+
+(* Centered satisfies the descent hypothesis componentwise. *)
+lemma centered_minus_q_div_a m q =
+  m > 0 ==> Inf_primes.divides m (q.a - (centered m q).a)
+[@@by intros @> [%simp_only centered] @> [%use c_mod_congr q.a m] @> auto]
+
+lemma centered_minus_q_div_b m q =
+  m > 0 ==> Inf_primes.divides m (q.b - (centered m q).b)
+[@@by intros @> [%simp_only centered] @> [%use c_mod_congr q.b m] @> auto]
+
+(* ============================================================
+   The descent transformation.
+   For 1 <= m and m | sum2 q, define descent_q m q via
+     descent_q m q = prod2 q (conj2 (centered m q)) / m.
+   It satisfies sum2 (descent_q m q) * m = sum2 q * sum2 (centered m q) / m.
+   ============================================================ *)
+
+let descent_q (m : int) (q : sq2) : sq2 =
+  let pp = prod2 q (conj2 (centered m q)) in
+  { a = pp.a / m; b = pp.b / m }
+
+(* Bound on m': sum2 (centered m q) / m <= m / 2 < m. *)
+lemma descent_mp_strict m q =
+  m > 1 ==> sum2 (centered m q) <= m * m / 2
+[@@by intros
+  @> [%use sum2_centered_bound m q]
+  @> arith]
+
+(* Useful: divides quotient. *)
+lemma divides_quot d n =
+  d <> 0 && Inf_primes.divides d n
+  ==> n = (n / d) * d
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.div_mod n d]
+  @> auto]
+
+(* descent_q components multiplied by m recover the original prod2 components. *)
+lemma descent_q_a_times_m m q =
+  m > 0
+  && Inf_primes.divides m (q.a - (centered m q).a)
+  && Inf_primes.divides m (q.b - (centered m q).b)
+  && Inf_primes.divides m (sum2 (centered m q))
+  ==> m * (descent_q m q).a = (prod2 q (conj2 (centered m q))).a
+[@@by intros
+  @> [%use prod2_a_div_m m q (centered m q)]
+  @> [%use divides_quot m (prod2 q (conj2 (centered m q))).a]
+  @> [%expand descent_q m q]
+  @> auto]
+
+lemma descent_q_b_times_m m q =
+  m > 0
+  && Inf_primes.divides m (q.a - (centered m q).a)
+  && Inf_primes.divides m (q.b - (centered m q).b)
+  ==> m * (descent_q m q).b = (prod2 q (conj2 (centered m q))).b
+[@@by intros
+  @> [%use prod2_b_div_m m q (centered m q)]
+  @> [%use divides_quot m (prod2 q (conj2 (centered m q))).b]
+  @> [%expand descent_q m q]
+  @> auto]
+
+(* Key descent identity: m^2 * sum2 (descent_q m q) = sum2 q * sum2 (centered m q). *)
+lemma descent_step_eq m q =
+  m > 0
+  && Inf_primes.divides m (sum2 q)
+  ==> m * m * sum2 (descent_q m q) = sum2 q * sum2 (centered m q)
+[@@by intros
+  @> [%use centered_minus_q_div_a m q]
+  @> [%use centered_minus_q_div_b m q]
+  @> [%use m_div_sum2_centered m q]
+  @> [%use descent_q_a_times_m m q]
+  @> [%use descent_q_b_times_m m q]
+  @> [%use sum2_prod2 q (conj2 (centered m q))]
+  @> [%use sum2_conj2 (centered m q)]
+  @> [%simp_only sum2]
+  @> nonlin ()]
+
+(* If centered residues are both 0, then m divides both q.a and q.b. *)
+lemma centered_zero_a m q =
+  m > 0 && (centered m q).a = 0
+  ==> Inf_primes.divides m q.a
+[@@by intros
+  @> [%expand centered m q]
+  @> [%use c_mod_congr q.a m]
+  @> [%simp_only Inf_primes.divides]
+  @> auto]
+
+lemma centered_zero_b m q =
+  m > 0 && (centered m q).b = 0
+  ==> Inf_primes.divides m q.b
+[@@by intros
+  @> [%expand centered m q]
+  @> [%use c_mod_congr q.b m]
+  @> [%simp_only Inf_primes.divides]
+  @> auto]
+
+(* If m | q.a and m | q.b, then m^2 | sum2 q. *)
+lemma m_sq_div_sum2 m q =
+  m > 0 && Inf_primes.divides m q.a && Inf_primes.divides m q.b
+  ==> Inf_primes.divides (m * m) (sum2 q)
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%simp_only sum2]
+  @> [%use Mod.Theorems.div_mod q.a m]
+  @> [%use Mod.Theorems.div_mod q.b m]
+  @> [%use Mod.Theorems.mod_mul_left_zero
+       ((q.a / m) * (q.a / m) + (q.b / m) * (q.b / m)) (m * m)]
+  @> generalize (quote_term (q.a / m)) "x"
+  @> generalize (quote_term (q.b / m)) "y"
+  @> nonlin ()]
+
+(* From Fta: euclid lemma; if p prime and m | p, then m = 1 or m = p (for m > 0). *)
+lemma prime_divisor_pos p m =
+  Inf_primes.is_prime p && m > 0 && Inf_primes.divides m p
+  ==> m = 1 || m = p
+[@@by intros @> [%use Fta.prime_divisor_is_1_or_p p m] @> auto]
+
+(* Cancellation: if m > 0 and m*m | m*p, then m | p. *)
+lemma mm_div_mp_implies_m_div_p m p =
+  m > 0 && Inf_primes.divides (m * m) (m * p)
+  ==> Inf_primes.divides m p
+[@@by intros
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.div_mod (m * p) (m * m)]
+  @> [%use Mod.Theorems.mod_mul_left_zero ((m * p) / (m * m)) m]
+  @> [%use Mod.Theorems.div_mod p m]
+  @> nonlin ()]
+
+(* For prime p, 1 < m < p, sum2 q = m * p, sum2 (centered m q) = 0
+   leads to a contradiction.  Hence sum2 (centered m q) > 0. *)
+lemma descent_mp_pos p m q =
+  Inf_primes.is_prime p && 1 < m && m < p && sum2 q = m * p
+  ==> sum2 (centered m q) > 0
+[@@by intros
+  @> [%cases (sum2 (centered m q) = 0)]
+  @>| [(* sum2 (centered) = 0 case: derive contradiction *)
+       intros
+       @> [%subgoal (centered m q).a = 0 && (centered m q).b = 0]
+       @>| [intros
+            @> [%use centered_zero_a m q]
+            @> [%use centered_zero_b m q]
+            @> [%use m_sq_div_sum2 m q]
+            @> [%use mm_div_mp_implies_m_div_p m p]
+            @> [%use prime_divisor_pos p m]
+            @> auto;
+            (* Show centered.a = 0 && centered.b = 0 *)
+            [%simp_only sum2]
+            @> [%expand centered m q]
+            @> nonlin ()];
+       (* sum2 (centered) > 0 *)
+       intros
+       @> [%simp_only sum2]
+       @> [%expand centered m q]
+       @> nonlin ()]]
+
+(* Hence m' = sum2 (centered m q) / m  is in [1, m). *)
+lemma descent_mp_in_range p m q =
+  Inf_primes.is_prime p && 1 < m && m < p && sum2 q = m * p
+  ==> 1 <= sum2 (centered m q) / m && sum2 (centered m q) / m < m
+[@@by intros
+  @> [%use descent_mp_pos p m q]
+  @> [%use descent_mp_strict m q]
+  @> [%subgoal Inf_primes.divides m (sum2 q)]
+  @>| [intros
+       @> [%use m_div_sum2_centered m q]
+       @> [%simp_only Inf_primes.divides]
+       @>>| ([%use Mod.Theorems.div_mod (sum2 (centered m q)) m]
+             @> nonlin ());
+       (* m | sum2 q since sum2 q = m * p *)
+       [%simp_only Inf_primes.divides]
+       @>>| ([%use Mod.Theorems.mod_mul_left_zero p m] @> nonlin ())]]
+
+(* ============================================================
+   Descent recursion: starting from m * p = sum2 q with 1 <= m < p,
+   iterate the descent step until m = 1, leaving sum2 = p.
+   ============================================================ *)
+
+let rec descent_loop (m : int) (q : sq2) : sq2 =
+  if m <= 1 then q
+  else
+    let mp = sum2 (centered m q) / m in
+    if mp <= 0 || mp >= m then q  (* unreachable under correct hypotheses *)
+    else descent_loop mp (descent_q m q)
+[@@measure Ordinal.of_int (max 0 m)]
+
+(* Custom induction scheme matching descent_loop's recursion. *)
+let rec descent_ind (m : int) (q : sq2) : int =
+  if m <= 1 then 0
+  else
+    let mp = sum2 (centered m q) / m in
+    if mp <= 0 || mp >= m then 0
+    else 1 + descent_ind mp (descent_q m q)
+[@@measure Ordinal.of_int (max 0 m)]
+
+let crush = Tactic.unroll 10
+
+(* Correctness: starting from m*p = sum2 q with 1 <= m < p, descent_loop
+   terminates with sum2 = p. *)
+theorem descent_loop_correct p m q =
+  Inf_primes.is_prime p && 1 <= m && m < p && sum2 q = m * p
+  ==> sum2 (descent_loop m q) = p
+[@@by
+  let close_sub =
+    intros
+    @> [%cases (m <= 1)]
+    @>| [crush;
+         intros
+         @> [%cases (sum2 (centered m q) / m <= 0 || sum2 (centered m q) / m >= m)]
+         @>| [(* spurious case refuted by descent_mp_in_range *)
+              intros
+              @> [%use descent_mp_in_range p m q]
+              @> auto;
+              (* recursive case *)
+              intros
+              @> [%use descent_step_eq m q]
+              @> [%use descent_mp_in_range p m q]
+              @> [%use m_div_sum2_centered m q]
+              @> [%expand descent_loop m q]
+              @> [%simp_only Inf_primes.divides]
+              @>>| ([%use Mod.Theorems.mod_mul_left_zero p m]
+                    @> [%use Mod.Theorems.div_mod (sum2 (centered m q)) m]
+                    @> nonlin ())]]
+  in
+  induction ~id:[%id descent_ind] () @>>| close_sub]
+[@@disable c_mod, descent_q, centered, sum2]
+
+(* ============================================================
+   PHASE D: every prime p ≡ 1 (mod 4) is a sum of two squares.
+   ============================================================ *)
+
+(* Initial seed: q = (c_mod (fact ((p-1)/2)) p, 1).
+   Then sum2 q = (c_mod ...)^2 + 1, which is divisible by p,
+   and 1 <= sum2 q / p < p. *)
+let initial_q (p : int) : sq2 =
+  { a = c_mod (Combinations.fact ((p - 1) / 2)) p; b = 1 }
+
+let initial_m (p : int) : int = sum2 (initial_q p) / p
+
+(* p divides sum2 (initial_q p). *)
+lemma p_div_initial_sum p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==> Inf_primes.divides p (sum2 (initial_q p))
+[@@by intros
+  @> [%use prime_1_mod_4_odd p]
+  @> [%use half_fact_sq_eq_neg_one p]
+  @> [%use c_mod_sq_eq (Combinations.fact ((p - 1) / 2)) p]
+  @> [%simp_only initial_q]
+  @> [%simp_only sum2]
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.mod_add
+       ((c_mod (Combinations.fact ((p - 1) / 2)) p)
+        * (c_mod (Combinations.fact ((p - 1) / 2)) p)) 1 p]
+  @> [%use Mod.Theorems.mod_add
+       (Combinations.fact ((p - 1) / 2) * Combinations.fact ((p - 1) / 2)) 1 p]
+  @> auto]
+
+(* Hence sum2 (initial_q p) = (initial_m p) * p. *)
+lemma initial_q_sum p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==> sum2 (initial_q p) = (initial_m p) * p
+[@@by intros
+  @> [%use p_div_initial_sum p]
+  @> [%simp_only initial_m]
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.div_mod (sum2 (initial_q p)) p]
+  @> auto]
+
+(* sum2 (initial_q p) >= 1 (since the b component is 1). *)
+lemma initial_q_sum_pos p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==> sum2 (initial_q p) >= 1
+[@@by intros
+  @> [%simp_only initial_q]
+  @> [%simp_only sum2]
+  @> nonlin ()]
+
+(* sum2 (initial_q p) < p^2: since |a| <= (p-1)/2, sum2 <= ((p-1)/2)^2 + 1 < p^2. *)
+lemma initial_q_sum_lt p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==> sum2 (initial_q p) < p * p
+[@@by intros
+  @> [%use prime_1_mod_4_odd p]
+  @> [%use c_mod_range (Combinations.fact ((p - 1) / 2)) p]
+  @> [%simp_only initial_q]
+  @> [%simp_only sum2]
+  @> generalize (quote_term (c_mod (Combinations.fact ((p - 1) / 2)) p)) "r"
+  @> nonlin ()]
+
+(* Initial m is at least 1. *)
+lemma initial_m_pos p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==> initial_m p >= 1
+[@@by intros
+  @> [%use prime_1_mod_4_odd p]
+  @> [%use p_div_initial_sum p]
+  @> [%use initial_q_sum_pos p]
+  @> [%simp_only initial_m]
+  @> [%simp_only Inf_primes.divides]
+  @> [%use Mod.Theorems.div_mod (sum2 (initial_q p)) p]
+  @> generalize (quote_term (sum2 (initial_q p))) "s"
+  @> generalize (quote_term (sum2 (initial_q p) / p)) "k"
+  @> nonlin ()]
+
+(* Initial m is less than p. *)
+lemma initial_m_lt_p p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==> initial_m p < p
+[@@by intros
+   @> [%use prime_1_mod_4_odd p]
+   @> [%use initial_q_sum p]
+   @> [%simp_only initial_m]
+   @> [%subgoal sum2 (initial_q p) < p * p]
+   @>| [intros
+        @> [%subgoal p * p <= p * (sum2 (initial_q p) / p)]
+        @>| [intros
+             @> generalize (quote_term (sum2 (initial_q p) / p)) "k"
+             @> generalize (quote_term (sum2 (initial_q p))) "s"
+             @> nonlin ();
+             (* prove p * p <= p * (s/p) from p > 0 and p <= (s/p) *)
+             generalize (quote_term (sum2 (initial_q p) / p)) "k"
+             @> arith];
+        (* prove subgoal *)
+        [%use initial_q_sum_lt p] @> auto]]
+
+(* Witness for primes p ≡ 1 (mod 4): the descent loop output. *)
+let prime_witness (p : int) : sq2 = descent_loop (initial_m p) (initial_q p)
+
+(* Test evaluations. *)
+eval prime_witness 5
+eval prime_witness 13
+eval prime_witness 17
+eval prime_witness 29
+
+(* Main theorem of Phase D: every prime p ≡ 1 (mod 4) is a sum of 2 squares. *)
+theorem prime_is_sum2_wrapped p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==> sum2 (prime_witness p) = p
+[@@by intros
+   @> [%use initial_m_pos p]
+   @> [%use initial_m_lt_p p]
+   @> [%use initial_q_sum p]
+   @> [%use descent_loop_correct p (initial_m p) (initial_q p)]
+   @> [%simp_only prime_witness]
+   @> auto]
+
+(* Theorem 20: every prime p ≡ 1 (mod 4) is a sum of 2 squares! *)
+theorem two_squares_theorem p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==>
+  let w = prime_witness p in
+  p = (w.a * w.a) + (w.b * w.b)
+[@@by [%use prime_is_sum2_wrapped p]
+   @> [%simp_only sum2]
+   @> auto]
