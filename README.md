@@ -4,7 +4,7 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **31/100**:
+Currently, we have proven **32/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
@@ -12,6 +12,7 @@ Currently, we have proven **31/100**:
 10\. [Euler's Generalization of Fermat's Little Theorem](#thm-10)  
 11\. [Infinitude of Primes](#thm-11)  
 19\. [Lagrange's Four-Square Theorem](#thm-19)  
+20\. [Fermat's Two-Square Theorem](#thm-20)  
 30\. [The Ballot Problem](#thm-30)  
 34\. [Divergence of the Harmonic Series](#thm-34)  
 38\. [Arithmetic Mean/Geometric Mean](#thm-38)  
@@ -171,6 +172,31 @@ theorem four_squares_theorem n =
   n >= 0 ==>
   let w = witness_for n in
   n = (w.a * w.a) + (w.b * w.b) + (w.c * w.c) + (w.d * w.d)
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-20"></a>
+## 20. Fermat's Two-Square Theorem
+
+[Source: src/two_squares.iml](src/two_squares.iml)
+
+*Statement (informal):*
+Every prime $p$ with $p \equiv 1 \pmod{4}$ is the sum of two integer squares:
+
+$$\forall \text{ prime } p,\ p \equiv 1 \pmod{4} \implies \exists\, a, b \in \mathbb{Z},\quad p = a^2 + b^2.$$
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem two_squares_theorem p =
+  Inf_primes.is_prime p && p mod 4 = 1
+  ==>
+  let w = prime_witness p in
+  p = (w.a * w.a) + (w.b * w.b)
 ```
 </details>
 
