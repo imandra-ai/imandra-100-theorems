@@ -1,0 +1,1268 @@
+(* A proof of the Formula for Pythagorean Triples in Imandra.
+   Theorem 23 in the 100 Theorems list.
+
+   Euclid's formula: for positive integers m > n with gcd(m, n) = 1
+   and m + n odd, the triple
+
+     (a, b, c) = (m^2 - n^2, 2mn, m^2 + n^2)
+
+   is a primitive Pythagorean triple: a^2 + b^2 = c^2 and gcd(a,b,c) = 1.
+
+   Grant Passmore, Imandra
+ *)
+
+[@@@import "gcd.iml"]
+[@@@import "fta.iml"]
+[@@@import "inf_primes.iml"]
+[@@@import "mod.iml"]
+
+(* ============================================================
+   The three coordinates of Euclid's formula.
+   ============================================================ *)
+
+let euclid_a (m : int) (n : int) : int = m * m - n * n
+let euclid_b (m : int) (n : int) : int = 2 * m * n
+let euclid_c (m : int) (n : int) : int = m * m + n * n
+
+(* Convenient abbreviation for gcd(a, c) and its smallest prime factor. *)
+let euclid_g (m : int) (n : int) : int =
+  Gcd.gcd (euclid_a m n) (euclid_c m n)
+let euclid_p (m : int) (n : int) : int =
+  Inf_primes.small_divisor_from 2 (euclid_g m n)
+
+eval euclid_a 2 1, euclid_b 2 1, euclid_c 2 1  (* 3, 4, 5 *)
+eval euclid_a 3 2, euclid_b 3 2, euclid_c 3 2  (* 5, 12, 13 *)
+eval euclid_a 4 1, euclid_b 4 1, euclid_c 4 1  (* 15, 8, 17 *)
+
+(* ============================================================
+   Step 1: the Pythagorean equation.
+   ============================================================ *)
+
+theorem pythagorean_equation m n =
+  let a = euclid_a m n in
+  let b = euclid_b m n in
+  let c = euclid_c m n in
+  a * a + b * b = c * c
+[@@by [%simp_only euclid_a, euclid_b, euclid_c] @> nonlin ()]
+
+(* ============================================================
+   Step 2: positivity of the triple.
+   ============================================================ *)
+
+theorem pythagorean_positive m n =
+  m > n && n > 0
+  ==> euclid_a m n > 0 && euclid_b m n > 0 && euclid_c m n > 0
+[@@by intros
+  @> [%simp_only euclid_a, euclid_b, euclid_c]
+  @> nonlin ()]
+
+(* ============================================================
+   Step 3: primitivity.
+
+   We show gcd(a, c) = 1 where a = m^2 - n^2, c = m^2 + n^2.
+
+   Argument: let p be any prime dividing gcd(a, c).  Then p | a + c = 2m^2
+   and p | c - a = 2n^2.  Two cases:
+     - p = 2: then 2 | a = m^2 - n^2, so m, n have the same parity,
+       so m + n is even, contradicting m + n odd.
+     - p odd: by Euclid's lemma, p | m^2 hence p | m; similarly p | n.
+       So p | gcd(m, n) = 1, contradicting p >= 2.
+   Hence gcd(a, c) has no prime divisor, so gcd(a, c) = 1.
+   ============================================================ *)
+
+(* The smallest prime divisor of a positive integer >= 2. *)
+
+(* Helper: if p prime, m >= 0, and p | m^2, then p | m. *)
+lemma prime_div_sq p m =
+  Inf_primes.is_prime p && m >= 0 && (m * m) mod p = 0
+  ==> m mod p = 0
+[@@by intros
+  @> [%use Fta.euclid_prime_divides_mul p m m]
+  @> [%simp_only Inf_primes.divides]
+  @> auto]
+
+(* If gcd(m, n) = 1 and m, n >= 0, no prime can divide both m^2 and n^2. *)
+lemma no_prime_div_both_sq p m n =
+  Inf_primes.is_prime p
+  && m >= 0 && n >= 0
+  && Gcd.gcd m n = 1
+  && (m * m) mod p = 0
+  && (n * n) mod p = 0
+  ==> false
+[@@by intros
+  @> [%have p_div_m := m mod p = 0 by ([%use prime_div_sq p m] @> auto)]
+  @> [%have p_div_n := n mod p = 0 by ([%use prime_div_sq p n] @> auto)]
+  @> [%have p_ge_2 := p >= 2 by auto]
+  @> [%have p_div_gcd_mn := (Gcd.gcd m n) mod p = 0
+       by ([%use Gcd.gcd_absorbs_common_divisor p m n] @> auto)]
+  @> [%use Mod.Theorems.mod_range 1 p]
+  @> [%expand Mod.abs p]
+  @> auto]
+
+(* Helper: an odd prime p that divides 2x divides x. *)
+lemma odd_prime_div_2x p x =
+  Inf_primes.is_prime p && p > 2 && (2 * x) mod p = 0
+  ==> x mod p = 0
+[@@by intros
+  @> [%have two_mod_p := 2 mod p = 2 by ([%use Gcd.mod_small 2 p] @> auto)]
+  @> [%use Fta.euclid_prime_divides_mul p 2 x]
+  @> [%simp_only Inf_primes.divides]
+  @> auto]
+
+(* Transitivity of divisibility: a | b and b | c implies a | c. *)
+lemma divides_trans a b c =
+  a > 0 && b > 0 && b mod a = 0 && c mod b = 0
+  ==> c mod a = 0
+[@@by intros
+  @> [%use Mod.Theorems.div_mod b a]
+  @> [%use Mod.Theorems.div_mod c b]
+  @> [%use Mod.Theorems.mod_mul_left_zero ((c / b) * (b / a)) a]
+  @> nonlin ()]
+
+(* For g >= 2, p := small_divisor_from 2 g is prime, divides g, and is >= 2. *)
+lemma euclid_p_props m n =
+  euclid_g m n >= 2
+  ==> Inf_primes.is_prime (euclid_p m n)
+      && euclid_p m n >= 2
+      && (euclid_g m n) mod (euclid_p m n) = 0
+[@@by intros
+  @> [%simp_only euclid_p]
+  @>>| ([%use Inf_primes.small_divisor_ge2 (euclid_g m n)]
+        @> [%use Inf_primes.sd_idempotent (euclid_g m n)]
+        @> [%use Inf_primes.small_divisor_divides (euclid_g m n)]
+        @> [%simp_only Inf_primes.is_prime, Inf_primes.divides]
+        @> auto)]
+
+(* Main primitivity lemma: under Euclid's hypotheses, gcd(a, c) = 1. *)
+theorem pythagorean_primitive m n =
+  m > n && n > 0
+  && Gcd.gcd m n = 1
+  && (m + n) mod 2 = 1
+  ==> euclid_g m n = 1
+[@@by intros
+  @> [%have a_pos := euclid_a m n > 0
+       by ([%simp_only euclid_a] @> nonlin ())]
+  @> [%have c_pos := euclid_c m n > 0
+       by ([%simp_only euclid_c] @> nonlin ())]
+  @> [%have g_pos := euclid_g m n >= 1
+       by ([%simp_only euclid_g]
+           @> [%use Gcd.gcd_pos_from_nonneg_not_both_zero
+                (euclid_a m n) (euclid_c m n)]
+           @> arith)]
+  (* If g = 1, done.  Otherwise extract a prime divisor p of g. *)
+  @> [%cases (euclid_g m n = 1)]
+  @>| [auto;
+       intros
+       @> [%have g_ge_2 := euclid_g m n >= 2 by arith]
+       @> [%use euclid_p_props m n]
+       (* p divides a and c (transitively via g). *)
+       @> [%have g_div_a := (euclid_a m n) mod (euclid_g m n) = 0
+            by ([%simp_only euclid_g]
+                @> [%use Gcd.gcd_dvd_left_pos (euclid_a m n) (euclid_c m n)]
+                @> arith)]
+       @> [%have g_div_c := (euclid_c m n) mod (euclid_g m n) = 0
+            by ([%simp_only euclid_g]
+                @> [%use Gcd.gcd_dvd_right_pos (euclid_a m n) (euclid_c m n)]
+                @> arith)]
+       @> [%have p_div_a := (euclid_a m n) mod (euclid_p m n) = 0
+            by ([%use divides_trans (euclid_p m n) (euclid_g m n) (euclid_a m n)]
+                @> auto)]
+       @> [%have p_div_c := (euclid_c m n) mod (euclid_p m n) = 0
+            by ([%use divides_trans (euclid_p m n) (euclid_g m n) (euclid_c m n)]
+                @> auto)]
+       (* p divides a + c = 2m^2 and c - a = 2n^2. *)
+       @> [%have p_div_2mm := (2 * m * m) mod (euclid_p m n) = 0
+            by ([%simp_only euclid_a, euclid_c]
+                @> [%use Mod.Theorems.div_mod (euclid_a m n) (euclid_p m n)]
+                @> [%use Mod.Theorems.div_mod (euclid_c m n) (euclid_p m n)]
+                @> [%simp_only euclid_a, euclid_c]
+                @> [%use Mod.Theorems.mod_mul_left_zero
+                     ((euclid_a m n) / (euclid_p m n)
+                      + (euclid_c m n) / (euclid_p m n))
+                     (euclid_p m n)]
+                @> [%simp_only euclid_a, euclid_c]
+                @> nonlin ())]
+       @> [%have p_div_2nn := (2 * n * n) mod (euclid_p m n) = 0
+            by ([%simp_only euclid_a, euclid_c]
+                @> [%use Mod.Theorems.div_mod (euclid_a m n) (euclid_p m n)]
+                @> [%use Mod.Theorems.div_mod (euclid_c m n) (euclid_p m n)]
+                @> [%simp_only euclid_a, euclid_c]
+                @> [%use Mod.Theorems.mod_mul_left_zero
+                     ((euclid_c m n) / (euclid_p m n)
+                      - (euclid_a m n) / (euclid_p m n))
+                     (euclid_p m n)]
+                @> [%simp_only euclid_a, euclid_c]
+                @> nonlin ())]
+       (* Case on p = 2 vs p odd. *)
+       @> [%cases (euclid_p m n = 2)]
+       @>| [(* p = 2: 2 | m^2 - n^2 => m, n same parity => m + n even. *)
+            intros
+            @> [%simp_only euclid_a]
+            @> [%use Mod.Theorems.div_mod m 2]
+            @> [%use Mod.Theorems.mod_range m 2]
+            @> [%use Mod.Theorems.div_mod n 2]
+            @> [%use Mod.Theorems.mod_range n 2]
+            @> [%expand Mod.abs 2]
+            @> nonlin ();
+            (* p odd: p > 2. *)
+            intros
+            @> [%have p_odd := euclid_p m n > 2 by arith]
+            @> [%have p_div_mm := (m * m) mod (euclid_p m n) = 0
+                 by ([%use odd_prime_div_2x (euclid_p m n) (m * m)]
+                     @> [%have rew := 2 * m * m = 2 * (m * m) by (nonlin ())]
+                     @> auto)]
+            @> [%have p_div_nn := (n * n) mod (euclid_p m n) = 0
+                 by ([%use odd_prime_div_2x (euclid_p m n) (n * n)]
+                     @> [%have rew := 2 * n * n = 2 * (n * n) by (nonlin ())]
+                     @> auto)]
+            @> [%use no_prime_div_both_sq (euclid_p m n) m n]
+            @> auto]]]
+
+(* ============================================================
+   Theorem 23 (forward direction): Euclid's formula produces a
+   primitive Pythagorean triple.
+   ============================================================ *)
+
+theorem pythagorean_triples_forward m n =
+  m > n && n > 0 && Gcd.gcd m n = 1 && (m + n) mod 2 = 1
+  ==>
+  let a = euclid_a m n in
+  let b = euclid_b m n in
+  let c = euclid_c m n in
+  a * a + b * b = c * c        (* Pythagorean equation. *)
+  && a > 0 && b > 0 && c > 0   (* Positivity. *)
+  && Gcd.gcd a c = 1           (* Primitivity (gcd(a,b,c) = 1). *)
+[@@by intros
+  @> [%use pythagorean_equation m n]
+  @> [%use pythagorean_positive m n]
+  @> [%use pythagorean_primitive m n]
+  @> auto]
+
+(* ============================================================
+   PHASE B: Backward direction (characterization of primitive triples).
+
+   Every primitive Pythagorean triple (a, b, c) with b even has the
+   form a = m^2 - n^2, b = 2mn, c = m^2 + n^2 for some m > n > 0 with
+   gcd(m, n) = 1 and m + n odd.
+
+   The key technical lemma: if gcd(u, v) = 1 and u*v = k^2 (with u, v,
+   k >= 0), then u and v are both perfect squares.
+
+   We prove this by defining extract_sqrt which, given (u, k) where
+   u | k^2 and "the cofactor is coprime to u", computes sqrt(u) by
+   peeling off prime squares one at a time.
+   ============================================================ *)
+
+(* ============================================================
+   Helper definitions and lemmas for Phase B.
+   We avoid the "coprime product = square => each is a square" lemma by
+   defining m, n directly via gcd of (a + c) and b.
+   ============================================================ *)
+
+(* The smallest prime dividing u, when u >= 2. *)
+
+let smallest_prime (u : int) : int = Inf_primes.small_divisor_from 2 u
+
+(* ============================================================
+   Helper lemmas for the extract_sqrt correctness proof.
+   ============================================================ *)
+
+(* If p is prime, p | u, and gcd(u, v) = 1, then p does not divide v. *)
+lemma prime_coprime_in_prod p u v =
+  Inf_primes.is_prime p
+  && u mod p = 0
+  && Gcd.gcd u v = 1
+  ==> v mod p <> 0
+[@@by intros
+  @> [%have p_ge_2 := p >= 2 by auto]
+  @> [%cases (v mod p = 0)]
+  @>| [intros
+       @> [%have p_div_gcd := (Gcd.gcd u v) mod p = 0
+            by ([%use Gcd.gcd_absorbs_common_divisor p u v] @> arith)]
+       @> [%use Gcd.mod_small 1 p]
+       @> auto;
+       auto]]
+
+(* If p prime divides u and divides k, and u*v = k^2 and gcd(u, v) = 1,
+   then p^2 divides u. *)
+lemma prime_sq_div_factor p u v k =
+  Inf_primes.is_prime p
+  && u >= 0 && v >= 0 && k >= 0
+  && u * v = k * k
+  && Gcd.gcd u v = 1
+  && u mod p = 0
+  && k mod p = 0
+  ==> u mod (p * p) = 0
+[@@by intros
+  @> [%have p_ge_2 := p >= 2 by auto]
+  @> [%have p_ne_div_v := v mod p <> 0
+       by ([%use prime_coprime_in_prod p u v] @> auto)]
+  @> [%have u_eq := u = (u / p) * p
+       by ([%use Mod.Theorems.div_mod u p] @> auto)]
+  @> [%have k_eq := k = (k / p) * p
+       by ([%use Mod.Theorems.div_mod k p] @> auto)]
+  (* (u/p) * v = (k/p) * (k/p) * p *)
+  @> [%have step1 := (u / p) * v = (k / p) * (k / p) * p
+       by (nonlin ())]
+  (* So p | (u/p) * v.  Since gcd(p, v) = 1, p | u/p. *)
+  @> [%have step2 := ((u / p) * v) mod p = 0
+       by ([%use Mod.Theorems.mod_mul_left_zero ((k / p) * (k / p)) p] @> auto)]
+  @> [%have u_div_p_nonneg := u / p >= 0
+       by ([%use Mod.Theorems.div_mod u p] @> nonlin ())]
+  @> [%have p_div_u_div_p := (u / p) mod p = 0
+       by ([%use Fta.euclid_prime_divides_mul p (u / p) v]
+           @> [%simp_only Inf_primes.divides]
+           @> auto)]
+  (* So u/p = (u/p/p) * p, i.e., u = (u/p²) * p². *)
+  @> [%use Mod.Theorems.div_mod (u / p) p]
+  @> [%use Mod.Theorems.mod_mul_left_zero ((u / p) / p) (p * p)]
+  @> [%use Mod.Theorems.div_mod u (p * p)]
+  @> [%use Mod.Theorems.mod_range u (p * p)]
+  @> [%expand Mod.abs (p * p)]
+  @> generalize (quote_term ((u / p) / p)) "q"
+  @> nonlin ()]
+
+(* If u = p^2 * u', then gcd(u, v) = 1 implies gcd(u', v) = 1. *)
+lemma gcd_after_extraction p u v =
+  p >= 2 && u >= 0 && v >= 0
+  && Gcd.gcd u v = 1
+  && u mod (p * p) = 0
+  ==> Gcd.gcd (u / (p * p)) v = 1
+[@@by intros
+  @> [%have u_eq := u = (u / (p * p)) * (p * p)
+       by ([%use Mod.Theorems.div_mod u (p * p)] @> nonlin ())]
+  @> [%have div_nonneg := u / (p * p) >= 0
+       by ([%use Mod.Theorems.div_mod u (p * p)] @> nonlin ())]
+  (* Any common divisor of u/(p²) and v divides u and v, so divides gcd(u, v) = 1. *)
+  @> [%have gud_pos := Gcd.gcd (u / (p * p)) v >= 1
+       by ([%use Gcd.gcd_pos_from_nonneg_not_both_zero (u / (p * p)) v]
+           @> arith)]
+  @> [%have d_div_u_quot := (u / (p * p)) mod (Gcd.gcd (u / (p * p)) v) = 0
+       by ([%use Gcd.gcd_dvd_left_pos (u / (p * p)) v] @> arith)]
+  @> [%have d_div_v := v mod (Gcd.gcd (u / (p * p)) v) = 0
+       by ([%use Gcd.gcd_dvd_right_pos (u / (p * p)) v] @> arith)]
+  @> [%have d_div_u := u mod (Gcd.gcd (u / (p * p)) v) = 0
+       by ([%use Mod.Theorems.mod_mul_left_zero
+             ((u / (p * p)) / (Gcd.gcd (u / (p * p)) v) * (p * p))
+             (Gcd.gcd (u / (p * p)) v)]
+           @> [%use Mod.Theorems.div_mod (u / (p * p))
+                (Gcd.gcd (u / (p * p)) v)]
+           @> nonlin ())]
+  @> [%have d_div_gcd_uv := (Gcd.gcd u v) mod (Gcd.gcd (u / (p * p)) v) = 0
+       by ([%use Gcd.gcd_absorbs_common_divisor
+                  (Gcd.gcd (u / (p * p)) v) u v]
+           @> arith)]
+  @> [%use Gcd.one_mod_d_zero_implies_d1 (Gcd.gcd (u / (p * p)) v)]
+  @> auto]
+
+let param_g (a : int) (b : int) (c : int) : int = Gcd.gcd (a + c) b
+let param_m (a : int) (b : int) (c : int) : int = (a + c) / param_g a b c
+let param_n (a : int) (b : int) (c : int) : int = b / param_g a b c
+
+eval param_m 3 4 5, param_n 3 4 5  (* Should give (2, 1) since (3+5)/gcd(8,4) = 8/4=2, 4/4=1 *)
+eval param_m 5 12 13, param_n 5 12 13  (* (3, 2) since (5+13)/gcd(18,12) = 18/6=3, 12/6=2 *)
+eval param_m 15 8 17, param_n 15 8 17  (* (4, 1) since (15+17)/gcd(32,8) = 32/8=4, 8/8=1 *)
+
+(* ============================================================
+   Mod 4 analysis: squares are 0 or 1 mod 4.
+   ============================================================ *)
+
+(* If a is odd, a^2 ≡ 1 mod 4. *)
+lemma odd_sq_mod_4 a =
+  a mod 2 = 1 ==> a * a mod 4 = 1
+[@@by intros
+  @> [%have a_eq := a = (a / 2) * 2 + 1
+       by ([%use Mod.Theorems.div_mod a 2] @> auto)]
+  @> [%have a_sq_eq := a * a = 4 * ((a / 2) * (a / 2)) + 4 * (a / 2) + 1
+       by (nonlin ())]
+  @> [%use Mod.Theorems.mod_mul_left_zero
+       ((a / 2) * (a / 2) + (a / 2)) 4]
+  @> [%use Gcd.mod_small 1 4]
+  @> [%use Mod.Theorems.div_mod (a * a) 4]
+  @> generalize (quote_term (a * a)) "asq"
+  @> generalize (quote_term (a / 2)) "q"
+  @> nonlin ()]
+
+(* If a is even, a^2 ≡ 0 mod 4. *)
+lemma even_sq_mod_4 a =
+  a mod 2 = 0 ==> a * a mod 4 = 0
+[@@by intros
+  @> [%have a_eq := a = (a / 2) * 2
+       by ([%use Mod.Theorems.div_mod a 2] @> auto)]
+  @> [%have a_sq_eq := a * a = 4 * ((a / 2) * (a / 2))
+       by (nonlin ())]
+  @> [%use Mod.Theorems.mod_mul_left_zero ((a / 2) * (a / 2)) 4]
+  @> auto]
+
+(* Either case. *)
+lemma sq_mod_4 a =
+  a * a mod 4 = 0 || a * a mod 4 = 1
+[@@by [%cases (a mod 2 = 0)]
+  @>| [intros @> [%use even_sq_mod_4 a] @> auto;
+       intros
+       @> [%use Mod.Theorems.mod_range a 2]
+       @> [%expand Mod.abs 2]
+       @> [%have a_odd := a mod 2 = 1 by arith]
+       @> [%use odd_sq_mod_4 a]
+       @> auto]]
+
+(* ============================================================
+   Phase B Lemma 1: For primitive Pythagorean triples, if a is odd
+   then b is even and c is odd.
+   ============================================================ *)
+
+lemma a_or_b_odd a b =
+  Gcd.gcd a b = 1
+  ==> a mod 2 = 1 || b mod 2 = 1
+[@@by intros
+  @> [%cases (a mod 2 = 0)]
+  @>| [(* a even *)
+       intros
+       @> [%cases (b mod 2 = 0)]
+       @>| [intros
+            (* Both even: gcd would be >= 2 *)
+            @> [%have two_div_gcd := (Gcd.gcd a b) mod 2 = 0
+                 by ([%use Gcd.gcd_absorbs_common_divisor 2 a b] @> auto)]
+            @> [%use Gcd.mod_small 1 2]
+            @> auto;
+            (* b odd *)
+            intros
+            @> [%use Mod.Theorems.mod_range b 2]
+            @> [%expand Mod.abs 2]
+            @> auto];
+       (* a odd *)
+       intros
+       @> [%use Mod.Theorems.mod_range a 2]
+       @> [%expand Mod.abs 2]
+       @> auto]]
+
+(* ============================================================
+   Phase B Lemma 1.5: For a primitive Pythagorean triple, gcd(a, c) = 1
+   and gcd(b, c) = 1.
+   ============================================================ *)
+
+lemma smallest_prime_is_prime u =
+  u >= 2 ==> Inf_primes.is_prime (smallest_prime u)
+[@@by intros
+  @> [%simp_only smallest_prime]
+  @> [%use Inf_primes.small_divisor_ge2 u]
+  @> [%use Inf_primes.sd_idempotent u]
+  @> [%simp_only Inf_primes.is_prime] @> auto]
+
+lemma smallest_prime_ge_2 u =
+  u >= 2 ==> smallest_prime u >= 2
+[@@by intros
+  @> [%simp_only smallest_prime]
+  @> [%use Inf_primes.small_divisor_ge2 u] @> auto]
+
+lemma smallest_prime_divides u =
+  u >= 2 ==> u mod (smallest_prime u) = 0
+[@@by intros
+  @> [%simp_only smallest_prime]
+  @> [%use Inf_primes.small_divisor_divides u]
+  @> [%simp_only Inf_primes.divides] @> auto]
+
+(* gcd(a, c) = 1 for primitive Pythagorean triples. *)
+lemma all_rel_prime_a_c a b c =
+  a > 0 && b > 0 && c > 0
+  && Gcd.gcd a b = 1
+  && a * a + b * b = c * c
+  ==> Gcd.gcd a c = 1
+[@@by intros
+  @> [%have g_pos := Gcd.gcd a c >= 1
+       by ([%use Gcd.gcd_pos_from_nonneg_not_both_zero a c] @> arith)]
+  @> [%cases (Gcd.gcd a c = 1)]
+  @>| [auto;
+       (* gcd(a, c) >= 2: extract a prime divisor and derive contradiction. *)
+       intros
+       @> [%have g_ge_2 := Gcd.gcd a c >= 2 by arith]
+       @> [%use smallest_prime_is_prime (Gcd.gcd a c)]
+       @> [%use smallest_prime_ge_2 (Gcd.gcd a c)]
+       @> [%use smallest_prime_divides (Gcd.gcd a c)]
+       (* p | gcd(a, c), so p | a and p | c. *)
+       @> [%have g_div_a := a mod (Gcd.gcd a c) = 0
+            by ([%use Gcd.gcd_dvd_left_pos a c] @> arith)]
+       @> [%have g_div_c := c mod (Gcd.gcd a c) = 0
+            by ([%use Gcd.gcd_dvd_right_pos a c] @> arith)]
+       @> [%have p_div_a := a mod (smallest_prime (Gcd.gcd a c)) = 0
+            by ([%use divides_trans (smallest_prime (Gcd.gcd a c)) (Gcd.gcd a c) a]
+                @> auto)]
+       @> [%have p_div_c := c mod (smallest_prime (Gcd.gcd a c)) = 0
+            by ([%use divides_trans (smallest_prime (Gcd.gcd a c)) (Gcd.gcd a c) c]
+                @> auto)]
+       (* p | c² - a² = b², hence p | b. *)
+       @> [%have p_div_bsq := (b * b) mod (smallest_prime (Gcd.gcd a c)) = 0
+            by ([%have bsq_eq := b * b = c * c - a * a by (nonlin ())]
+                @> [%use Mod.Theorems.div_mod a (smallest_prime (Gcd.gcd a c))]
+                @> [%use Mod.Theorems.div_mod c (smallest_prime (Gcd.gcd a c))]
+                @> [%use Mod.Theorems.mod_mul_left_zero
+                     ((smallest_prime (Gcd.gcd a c))
+                      * ((c / (smallest_prime (Gcd.gcd a c)))
+                         * (c / (smallest_prime (Gcd.gcd a c)))
+                         - (a / (smallest_prime (Gcd.gcd a c)))
+                           * (a / (smallest_prime (Gcd.gcd a c)))))
+                     (smallest_prime (Gcd.gcd a c))]
+                @> generalize (quote_term (smallest_prime (Gcd.gcd a c))) "p"
+                @> generalize (quote_term (a / (smallest_prime (Gcd.gcd a c)))) "qa"
+                @> generalize (quote_term (c / (smallest_prime (Gcd.gcd a c)))) "qc"
+                @> nonlin ())]
+       @> [%have p_div_b := b mod (smallest_prime (Gcd.gcd a c)) = 0
+            by ([%use prime_div_sq (smallest_prime (Gcd.gcd a c)) b] @> auto)]
+       (* p | gcd(a, b) = 1, contradiction with p >= 2. *)
+       @> [%have p_div_gcd_ab := (Gcd.gcd a b) mod (smallest_prime (Gcd.gcd a c)) = 0
+            by ([%use Gcd.gcd_absorbs_common_divisor
+                  (smallest_prime (Gcd.gcd a c)) a b] @> arith)]
+       @> [%use Gcd.mod_small 1 (smallest_prime (Gcd.gcd a c))]
+       @> auto]]
+
+(* ============================================================
+   Phase B Lemma 2: For a primitive Pythagorean triple with a odd,
+   b is even and c is odd.
+   ============================================================ *)
+
+lemma b_even_c_odd a b c =
+  Gcd.gcd a b = 1
+  && a mod 2 = 1
+  && a * a + b * b = c * c
+  ==> b mod 2 = 0 && c mod 2 = 1
+[@@by intros
+  @> [%have a_sq_mod_4 := a * a mod 4 = 1 by ([%use odd_sq_mod_4 a] @> auto)]
+  @> [%have c_sq_cases := c * c mod 4 = 0 || c * c mod 4 = 1
+       by ([%use sq_mod_4 c] @> auto)]
+  @> [%cases (b mod 2 = 0)]
+  @>| [(* b even: then b² mod 4 = 0, so c² mod 4 = 1, so c is odd. *)
+       intros
+       @> [%have b_sq_mod_4 := b * b mod 4 = 0
+            by ([%use even_sq_mod_4 b] @> auto)]
+       @> [%have c_sq_mod_4 := c * c mod 4 = 1
+            by ([%use Mod.Theorems.mod_add (a * a) (b * b) 4]
+                @> [%use Mod.Theorems.div_mod (c * c) 4]
+                @> [%use Gcd.mod_small 1 4]
+                @> nonlin ())]
+       @> [%cases (c mod 2 = 0)]
+       @>| [(* c even: contradicts c² mod 4 = 1 (would be 0). *)
+            intros
+            @> [%have c_sq_zero := c * c mod 4 = 0
+                 by ([%use even_sq_mod_4 c] @> auto)]
+            @> auto;
+            (* c odd: done. *)
+            intros
+            @> [%use Mod.Theorems.mod_range c 2]
+            @> [%expand Mod.abs 2]
+            @> auto];
+       (* b odd: b² mod 4 = 1, so a² + b² mod 4 = 2, but c² mod 4 in {0,1}.
+          Contradiction. *)
+       intros
+       @> [%use Mod.Theorems.mod_range b 2]
+       @> [%expand Mod.abs 2]
+       @> [%have b_odd := b mod 2 = 1 by arith]
+       @> [%have b_sq_mod_4 := b * b mod 4 = 1
+            by ([%use odd_sq_mod_4 b] @> auto)]
+       @> [%have sum_sq_mod_4 := (a * a + b * b) mod 4 = 2
+            by ([%use Mod.Theorems.mod_add (a * a) (b * b) 4]
+                @> [%use Gcd.mod_small 2 4]
+                @> auto)]
+       @> auto]]
+
+(* ============================================================
+   Phase B Lemma 3: gcd(m, n) = 1 by construction of m, n.
+   ============================================================ *)
+
+(* g = gcd(a+c, b) is positive. *)
+lemma param_g_pos a b c =
+  a > 0 && b > 0 && c > 0
+  ==> param_g a b c > 0
+[@@by intros
+  @> [%simp_only param_g]
+  @> [%use Gcd.gcd_pos_from_nonneg_not_both_zero (a + c) b]
+  @> arith]
+
+(* m * g = a + c. *)
+lemma param_m_times_g a b c =
+  a > 0 && b > 0 && c > 0
+  ==> param_m a b c * param_g a b c = a + c
+[@@by intros
+  @> [%simp_only param_m]
+  @> [%use param_g_pos a b c]
+  @> [%use Gcd.gcd_dvd_left_pos (a + c) b]
+  @> [%simp_only param_g]
+  @> [%use Mod.Theorems.div_mod (a + c) (Gcd.gcd (a + c) b)]
+  @> auto]
+
+(* n * g = b. *)
+lemma param_n_times_g a b c =
+  a > 0 && b > 0 && c > 0
+  ==> param_n a b c * param_g a b c = b
+[@@by intros
+  @> [%simp_only param_n]
+  @> [%use param_g_pos a b c]
+  @> [%use Gcd.gcd_dvd_right_pos (a + c) b]
+  @> [%simp_only param_g]
+  @> [%use Mod.Theorems.div_mod b (Gcd.gcd (a + c) b)]
+  @> auto]
+
+(* gcd(m, n) = 1.  Suppose d > 0 divides both m and n.  Then d*g divides
+   m*g = a+c and n*g = b, so d*g divides gcd(a+c, b) = g.  Hence d = 1. *)
+lemma gcd_m_n a b c =
+  a > 0 && b > 0 && c > 0
+  ==> Gcd.gcd (param_m a b c) (param_n a b c) = 1
+[@@by intros
+  @> [%use param_g_pos a b c]
+  @> [%use param_m_times_g a b c]
+  @> [%use param_n_times_g a b c]
+  @> [%have m_pos := param_m a b c > 0
+       by ([%simp_only param_m]
+           @> [%use Gcd.gcd_dvd_left_pos (a + c) b]
+           @> [%simp_only param_g]
+           @> [%use Mod.Theorems.div_mod (a + c) (Gcd.gcd (a + c) b)]
+           @> generalize (quote_term (Gcd.gcd (a + c) b)) "g"
+           @> nonlin ())]
+  @> [%have n_pos := param_n a b c > 0
+       by ([%simp_only param_n]
+           @> [%use Gcd.gcd_dvd_right_pos (a + c) b]
+           @> [%simp_only param_g]
+           @> [%use Mod.Theorems.div_mod b (Gcd.gcd (a + c) b)]
+           @> generalize (quote_term (Gcd.gcd (a + c) b)) "g"
+           @> nonlin ())]
+  @> [%have d_pos := Gcd.gcd (param_m a b c) (param_n a b c) >= 1
+       by ([%use Gcd.gcd_pos_from_nonneg_not_both_zero
+             (param_m a b c) (param_n a b c)] @> arith)]
+  @> [%have d_div_m := (param_m a b c) mod
+       (Gcd.gcd (param_m a b c) (param_n a b c)) = 0
+       by ([%use Gcd.gcd_dvd_left_pos (param_m a b c) (param_n a b c)] @> arith)]
+  @> [%have d_div_n := (param_n a b c) mod
+       (Gcd.gcd (param_m a b c) (param_n a b c)) = 0
+       by ([%use Gcd.gcd_dvd_right_pos (param_m a b c) (param_n a b c)] @> arith)]
+  (* d*g divides a + c. *)
+  @> [%have dg_div_apc := (a + c) mod
+       (Gcd.gcd (param_m a b c) (param_n a b c) * param_g a b c) = 0
+       by ([%use Mod.Theorems.div_mod (param_m a b c)
+             (Gcd.gcd (param_m a b c) (param_n a b c))]
+           @> [%use Mod.Theorems.mod_mul_left_zero
+                ((param_m a b c)
+                 / (Gcd.gcd (param_m a b c) (param_n a b c)))
+                (Gcd.gcd (param_m a b c) (param_n a b c) * param_g a b c)]
+           @> nonlin ())]
+  (* d*g divides b. *)
+  @> [%have dg_div_b := b mod
+       (Gcd.gcd (param_m a b c) (param_n a b c) * param_g a b c) = 0
+       by ([%use Mod.Theorems.div_mod (param_n a b c)
+             (Gcd.gcd (param_m a b c) (param_n a b c))]
+           @> [%use Mod.Theorems.mod_mul_left_zero
+                ((param_n a b c)
+                 / (Gcd.gcd (param_m a b c) (param_n a b c)))
+                (Gcd.gcd (param_m a b c) (param_n a b c) * param_g a b c)]
+           @> nonlin ())]
+  (* d*g divides gcd(a+c, b) = g. *)
+  @> [%have dg_pos := Gcd.gcd (param_m a b c) (param_n a b c) * param_g a b c > 0
+       by ([%use Gcd.gcd_pos_from_nonneg_not_both_zero
+             (param_m a b c) (param_n a b c)]
+           @> nonlin ())]
+  @> [%have dg_div_g := (param_g a b c) mod
+       (Gcd.gcd (param_m a b c) (param_n a b c) * param_g a b c) = 0
+       by ([%simp_only param_g]
+           @> [%use Gcd.gcd_absorbs_common_divisor
+                (Gcd.gcd (param_m a b c) (param_n a b c) * param_g a b c)
+                (a + c) b]
+           @> auto)]
+  (* So d * g divides g.  With d >= 1, g > 0, mod_small forces d = 1. *)
+  @> [%cases (Gcd.gcd (param_m a b c) (param_n a b c) = 1)]
+  @>| [auto;
+       intros
+       @> [%have d_ge_2 := Gcd.gcd (param_m a b c) (param_n a b c) >= 2 by arith]
+       @> [%have dg_gt_g := Gcd.gcd (param_m a b c) (param_n a b c) * param_g a b c
+                           > param_g a b c
+            by (nonlin ())]
+       @> [%have g_mod_dg := (param_g a b c) mod
+            (Gcd.gcd (param_m a b c) (param_n a b c) * param_g a b c) = param_g a b c
+            by ([%use Gcd.mod_small (param_g a b c)
+                  (Gcd.gcd (param_m a b c) (param_n a b c) * param_g a b c)] @> auto)]
+       @> arith]]
+
+(* ============================================================
+   Phase B Lemma 4: recip-m/n.  param_n * b = param_m * (c - a).
+   Equivalent to n/m = (c-a)/b as fractions.
+   ============================================================ *)
+
+lemma recip_m_n a b c =
+  a > 0 && b > 0 && c > 0
+  && a * a + b * b = c * c
+  ==> param_n a b c * b = param_m a b c * (c - a)
+[@@by intros
+  @> [%use param_g_pos a b c]
+  @> [%use param_m_times_g a b c]
+  @> [%use param_n_times_g a b c]
+  (* b^2 = (c-a)(c+a) *)
+  @> [%have bsq := b * b = (c - a) * (c + a) by (nonlin ())]
+  (* Substitute c + a = m*g, b = n*g: (n*g)^2 = (c-a) * m * g.
+     Divide by g (positive): n^2 * g = (c-a) * m, i.e., n*(n*g) = (c-a)*m. *)
+  @> generalize (quote_term (param_m a b c)) "m"
+  @> generalize (quote_term (param_n a b c)) "n"
+  @> generalize (quote_term (param_g a b c)) "g"
+  @> nonlin ()]
+
+(* ============================================================
+   Phase B Lemma 5: c/b and a/b in terms of m, n.
+   2*c*m*n = b*(m^2 + n^2),  2*a*m*n = b*(m^2 - n^2).
+   ============================================================ *)
+
+lemma c_b_val a b c =
+  a > 0 && b > 0 && c > 0
+  && a * a + b * b = c * c
+  ==> 2 * c * (param_m a b c) * (param_n a b c)
+      = b * ((param_m a b c) * (param_m a b c)
+             + (param_n a b c) * (param_n a b c))
+[@@by intros
+  @> [%use param_g_pos a b c]
+  @> [%use param_m_times_g a b c]
+  @> [%use param_n_times_g a b c]
+  @> [%use recip_m_n a b c]
+  @> generalize (quote_term (param_m a b c)) "m"
+  @> generalize (quote_term (param_n a b c)) "n"
+  @> generalize (quote_term (param_g a b c)) "g"
+  @> nonlin ()]
+
+lemma a_b_val a b c =
+  a > 0 && b > 0 && c > 0
+  && a * a + b * b = c * c
+  ==> 2 * a * (param_m a b c) * (param_n a b c)
+      = b * ((param_m a b c) * (param_m a b c)
+             - (param_n a b c) * (param_n a b c))
+[@@by intros
+  @> [%use param_g_pos a b c]
+  @> [%use param_m_times_g a b c]
+  @> [%use param_n_times_g a b c]
+  @> [%use recip_m_n a b c]
+  @> generalize (quote_term (param_m a b c)) "m"
+  @> generalize (quote_term (param_n a b c)) "n"
+  @> generalize (quote_term (param_g a b c)) "g"
+  @> nonlin ()]
+
+(* Sum of two odd squares is 2 mod 4. *)
+
+lemma odd_sum_sq_mod_4 m n =
+  m mod 2 = 1 && n mod 2 = 1
+  ==> (m * m + n * n) mod 4 = 2
+[@@by intros
+  @> [%use odd_sq_mod_4 m]
+  @> [%use odd_sq_mod_4 n]
+  @> [%use Mod.Theorems.mod_add (m * m) (n * n) 4]
+  @> [%use Gcd.mod_small 2 4]
+  @> auto]
+
+(* For primitive triple with a odd, m, n cannot both be odd. *)
+lemma not_both_m_n_odd a b c =
+  a > 0 && b > 0 && c > 0
+  && Gcd.gcd a b = 1
+  && a mod 2 = 1
+  && a * a + b * b = c * c
+  ==> param_m a b c mod 2 = 0 || param_n a b c mod 2 = 0
+[@@by intros
+  @> [%use b_even_c_odd a b c]
+  @> [%use c_b_val a b c]
+  @> [%cases (param_m a b c mod 2 = 1 && param_n a b c mod 2 = 1)]
+  @>| [(* Both odd: derive contradiction *)
+       intros
+       @> [%have m_sq_n_sq := (param_m a b c * param_m a b c
+                               + param_n a b c * param_n a b c) mod 4 = 2
+            by ([%use odd_sum_sq_mod_4 (param_m a b c) (param_n a b c)] @> auto)]
+       (* 2*c*m*n: c odd, m*n odd => 2*c*m*n mod 4 = 2 *)
+       @> [%have cmn_odd := (c * param_m a b c * param_n a b c) mod 2 = 1
+            by ([%use Mod.Theorems.mod_mul c (param_m a b c) 2]
+                @> [%use Mod.Theorems.mod_mul (c * param_m a b c) (param_n a b c) 2]
+                @> [%use Gcd.mod_small 1 2]
+                @> auto)]
+       @> [%have lhs_mod_4 := (2 * c * param_m a b c * param_n a b c) mod 4 = 2
+            by ([%use Mod.Theorems.div_mod (c * param_m a b c * param_n a b c) 2]
+                @> [%use Mod.Theorems.mod_mul_left_zero
+                     ((c * param_m a b c * param_n a b c) / 2) 4]
+                @> generalize (quote_term ((c * param_m a b c * param_n a b c) / 2)) "q"
+                @> nonlin ())]
+       (* RHS: b * (m^2 + n^2).  b even and m²+n² mod 4 = 2 imply RHS mod 4 = 0. *)
+       @> [%have rhs_mod_4 := (b * (param_m a b c * param_m a b c
+                                    + param_n a b c * param_n a b c)) mod 4 = 0
+            by ([%have b_eq := b = (b / 2) * 2
+                  by ([%use Mod.Theorems.div_mod b 2] @> auto)]
+                @> [%have sum_eq := (param_m a b c * param_m a b c
+                                     + param_n a b c * param_n a b c)
+                                    = ((param_m a b c * param_m a b c
+                                        + param_n a b c * param_n a b c) / 4) * 4 + 2
+                     by ([%use Mod.Theorems.div_mod
+                           (param_m a b c * param_m a b c
+                            + param_n a b c * param_n a b c) 4] @> auto)]
+                @> [%have prod_eq := b * (param_m a b c * param_m a b c
+                                          + param_n a b c * param_n a b c)
+                                    = 4 * ((b / 2)
+                                           * ((param_m a b c * param_m a b c
+                                               + param_n a b c * param_n a b c) / 4)
+                                           * 2
+                                           + (b / 2))
+                     by (nonlin ())]
+                @> [%use Mod.Theorems.mod_mul_left_zero
+                     ((b / 2)
+                      * ((param_m a b c * param_m a b c
+                          + param_n a b c * param_n a b c) / 4)
+                      * 2
+                      + (b / 2)) 4]
+                @> auto)]
+       @> auto;
+       (* At least one even *)
+       intros
+       @> [%use Mod.Theorems.mod_range (param_m a b c) 2]
+       @> [%use Mod.Theorems.mod_range (param_n a b c) 2]
+       @> [%expand Mod.abs 2]
+       @> auto]]
+
+(* ============================================================
+   Key: m^2 - n^2 is odd (when m, n coprime, one even one odd).
+   ============================================================ *)
+
+lemma m_sq_minus_n_sq_odd a b c =
+  a > 0 && b > 0 && c > 0
+  && Gcd.gcd a b = 1
+  && a mod 2 = 1
+  && a * a + b * b = c * c
+  ==> ((param_m a b c) * (param_m a b c)
+       - (param_n a b c) * (param_n a b c)) mod 2 = 1
+[@@by intros
+  @> [%use not_both_m_n_odd a b c]
+  @> [%use gcd_m_n a b c]
+  @> [%use Mod.Theorems.mod_range (param_m a b c) 2]
+  @> [%use Mod.Theorems.mod_range (param_n a b c) 2]
+  @> [%expand Mod.abs 2]
+  (* one of m, n is even, the other odd (from gcd = 1 and not both odd). *)
+  @> [%cases (param_m a b c mod 2 = 0 && param_n a b c mod 2 = 0)]
+  @>| [(* both even => gcd >= 2: contradicts gcd = 1 *)
+       intros
+       @> [%have two_div_gcd := (Gcd.gcd (param_m a b c) (param_n a b c)) mod 2 = 0
+            by ([%use Gcd.gcd_absorbs_common_divisor 2
+                  (param_m a b c) (param_n a b c)] @> auto)]
+       @> [%use Gcd.mod_small 1 2]
+       @> auto;
+       intros
+       (* Use parity of squares to argue m² - n² is odd. *)
+       @> [%use odd_sq_mod_4 (param_m a b c)]
+       @> [%use odd_sq_mod_4 (param_n a b c)]
+       @> [%use even_sq_mod_4 (param_m a b c)]
+       @> [%use even_sq_mod_4 (param_n a b c)]
+       @> [%use Mod.Theorems.div_mod (param_m a b c * param_m a b c) 4]
+       @> [%use Mod.Theorems.div_mod (param_n a b c * param_n a b c) 4]
+       @> [%use Mod.Theorems.div_mod (param_m a b c * param_m a b c
+                                      - param_n a b c * param_n a b c) 2]
+       @> [%use Mod.Theorems.mod_range (param_m a b c * param_m a b c
+                                        - param_n a b c * param_n a b c) 2]
+       @> [%expand Mod.abs 2]
+       @> generalize (quote_term ((param_m a b c * param_m a b c) / 4)) "mq"
+       @> generalize (quote_term ((param_n a b c * param_n a b c) / 4)) "nq"
+       @> generalize (quote_term ((param_m a b c * param_m a b c
+                                   - param_n a b c * param_n a b c) / 2)) "dh"
+       @> nonlin ()]]
+
+(* ============================================================
+   Key: gcd(m² - n², 2mn) = 1.
+   ============================================================ *)
+
+(* gcd(m, m² - n²) = 1 when gcd(m, n) = 1, m > n > 0. *)
+lemma gcd_m_msq_minus_nsq m n =
+  m > n && n > 0 && Gcd.gcd m n = 1
+  ==> Gcd.gcd m (m * m - n * n) = 1
+[@@by intros
+  @> [%have g_pos := Gcd.gcd m (m * m - n * n) > 0
+       by ([%use Gcd.gcd_pos_from_nonneg_not_both_zero m (m * m - n * n)] @> nonlin ())]
+  @> [%have g_div_m := m mod (Gcd.gcd m (m * m - n * n)) = 0
+       by ([%use Gcd.gcd_dvd_left_pos m (m * m - n * n)] @> arith)]
+  @> [%have g_div_diff := (m * m - n * n) mod (Gcd.gcd m (m * m - n * n)) = 0
+       by ([%use Gcd.gcd_dvd_right_pos m (m * m - n * n)] @> arith)]
+  (* g | m => g | m². Then g | m² - (m² - n²) = n². *)
+  @> [%have g_div_nsq := (n * n) mod (Gcd.gcd m (m * m - n * n)) = 0
+       by ([%use Mod.Theorems.div_mod m (Gcd.gcd m (m * m - n * n))]
+           @> [%use Mod.Theorems.div_mod (m * m - n * n)
+                (Gcd.gcd m (m * m - n * n))]
+           @> [%use Mod.Theorems.mod_mul_left_zero
+                ((m / (Gcd.gcd m (m * m - n * n)))
+                 * (m / (Gcd.gcd m (m * m - n * n)))
+                 * (Gcd.gcd m (m * m - n * n))
+                 - (m * m - n * n) / (Gcd.gcd m (m * m - n * n)))
+                (Gcd.gcd m (m * m - n * n))]
+           @> generalize (quote_term (Gcd.gcd m (m * m - n * n))) "g"
+           @> generalize (quote_term (m / (Gcd.gcd m (m * m - n * n)))) "qm"
+           @> generalize (quote_term ((m * m - n * n)
+                                      / (Gcd.gcd m (m * m - n * n)))) "qd"
+           @> nonlin ())]
+  @> [%use Gcd.divisor_square_right_in_coprime_is_one
+       (Gcd.gcd m (m * m - n * n)) m n]
+  @> auto]
+
+(* gcd(n, m² - n²) = 1 similarly. *)
+lemma gcd_n_msq_minus_nsq m n =
+  m > n && n > 0 && Gcd.gcd m n = 1
+  ==> Gcd.gcd n (m * m - n * n) = 1
+[@@by intros
+  @> [%have g_pos := Gcd.gcd n (m * m - n * n) > 0
+       by ([%use Gcd.gcd_pos_from_nonneg_not_both_zero n (m * m - n * n)] @> nonlin ())]
+  @> [%have g_div_n := n mod (Gcd.gcd n (m * m - n * n)) = 0
+       by ([%use Gcd.gcd_dvd_left_pos n (m * m - n * n)] @> arith)]
+  @> [%have g_div_diff := (m * m - n * n) mod (Gcd.gcd n (m * m - n * n)) = 0
+       by ([%use Gcd.gcd_dvd_right_pos n (m * m - n * n)] @> arith)]
+  @> [%have g_div_msq := (m * m) mod (Gcd.gcd n (m * m - n * n)) = 0
+       by ([%use Mod.Theorems.div_mod n (Gcd.gcd n (m * m - n * n))]
+           @> [%use Mod.Theorems.div_mod (m * m - n * n)
+                (Gcd.gcd n (m * m - n * n))]
+           @> [%use Mod.Theorems.mod_mul_left_zero
+                ((n / (Gcd.gcd n (m * m - n * n)))
+                 * (n / (Gcd.gcd n (m * m - n * n)))
+                 * (Gcd.gcd n (m * m - n * n))
+                 + (m * m - n * n) / (Gcd.gcd n (m * m - n * n)))
+                (Gcd.gcd n (m * m - n * n))]
+           @> generalize (quote_term (Gcd.gcd n (m * m - n * n))) "g"
+           @> generalize (quote_term (n / (Gcd.gcd n (m * m - n * n)))) "qn"
+           @> generalize (quote_term ((m * m - n * n)
+                                      / (Gcd.gcd n (m * m - n * n)))) "qd"
+           @> nonlin ())]
+  @> [%use Gcd.divisor_square_left_in_coprime_is_one
+       (Gcd.gcd n (m * m - n * n)) m n]
+  @> auto]
+
+(* ============================================================
+   Key lemma: param_m > param_n for primitive triples with a odd.
+   This follows from c > b and m*g = a+c > b = n*g.
+   ============================================================ *)
+
+lemma param_n_pos a b c =
+  a > 0 && b > 0 && c > 0
+  ==> param_n a b c > 0
+[@@by intros
+  @> [%use param_g_pos a b c]
+  @> [%use param_n_times_g a b c]
+  @> generalize (quote_term (param_n a b c)) "n"
+  @> generalize (quote_term (param_g a b c)) "g"
+  @> nonlin ()]
+
+lemma param_m_pos a b c =
+  a > 0 && b > 0 && c > 0
+  ==> param_m a b c > 0
+[@@by intros
+  @> [%use param_g_pos a b c]
+  @> [%use param_m_times_g a b c]
+  @> generalize (quote_term (param_m a b c)) "m"
+  @> generalize (quote_term (param_g a b c)) "g"
+  @> nonlin ()]
+
+lemma param_m_gt_n a b c =
+  a > 0 && b > 0 && c > 0
+  && a * a + b * b = c * c
+  ==> param_m a b c > param_n a b c
+[@@by intros
+  @> [%use param_g_pos a b c]
+  @> [%use param_m_times_g a b c]
+  @> [%use param_n_times_g a b c]
+  @> [%have c_gt_b := c > b by (nonlin ())]
+  @> generalize (quote_term (param_m a b c)) "m"
+  @> generalize (quote_term (param_n a b c)) "n"
+  @> generalize (quote_term (param_g a b c)) "g"
+  @> nonlin ()]
+
+(* ============================================================
+   Key lemma: gcd(2mn, m²-n²) = 1.
+   ============================================================ *)
+
+(* gcd(2, m² - n²) = 1 since m²-n² is odd. *)
+
+(* Generator of (m, n) from a primitive Pythagorean triple (a, b, c).
+   When a is odd, we use (a + c)/g and b/g; when a is even, swap a, b. *)
+
+let pyth_trip_gen_m (a : int) (b : int) (c : int) : int =
+  if a mod 2 = 1 then param_m a b c else param_m b a c
+
+let pyth_trip_gen_n (a : int) (b : int) (c : int) : int =
+  if a mod 2 = 1 then param_n a b c else param_n b a c
+
+(* Coprime cancellation: gcd(p, q) = 1 && p | n*q => p | n. *)
+
+lemma coprime_cancel p q n =
+  p > 0 && Gcd.gcd p q = 1 && (n * q) mod p = 0
+  ==> n mod p = 0
+[@@by intros
+  @> [%use Gcd.gcd_eq_one_iff_bezout p q]
+  @> let (u, v) = Gcd.bezout_sub p q in
+     [%have bezout_eq := u * p + v * q = 1 by auto]
+  @> let (u, v) = Gcd.bezout_sub p q in
+     [%have n_eq := n = u * p * n + v * (n * q) by (nonlin ())]
+  @> [%use Mod.Theorems.div_mod (n * q) p]
+  @> let (u, v) = Gcd.bezout_sub p q in
+     [%use Mod.Theorems.mod_mul_left_zero (u * n + v * ((n * q) / p)) p]
+  @> let (u, v) = Gcd.bezout_sub p q in
+     [%have rew := n = p * (u * n + v * ((n * q) / p)) by (nonlin ())]
+  @> auto]
+
+(* lowest_terms_unique: p/q = n/d in lowest terms => p = n, q = d.
+
+   Proof sketch:
+   - p*d = n*q => p | n*q.  gcd(p, q) = 1 => p | n  (coprime_cancel).
+     Symmetrically n | p.  Both positive => p = n.
+   - Substituting p = n: p*d = p*q, so d = q. *)
+
+lemma lowest_terms_unique p q n d =
+  p > 0 && q > 0 && n > 0 && d > 0
+  && Gcd.gcd p q = 1 && Gcd.gcd n d = 1
+  && p * d = n * q
+  ==> p = n && q = d
+[@@by intros
+  @> [%have p_div_nq := (n * q) mod p = 0
+       by ([%use Mod.Theorems.mod_mul_left_zero d p] @> nonlin ())]
+  @> [%have p_div_n := n mod p = 0
+       by ([%use coprime_cancel p q n] @> auto)]
+  @> [%have n_div_pd := (p * d) mod n = 0
+       by ([%use Mod.Theorems.mod_mul_left_zero q n] @> nonlin ())]
+  @> [%have n_div_p := p mod n = 0
+       by ([%use coprime_cancel n d p] @> auto)]
+  (* p | n, n | p, both positive => p = n. *)
+  @> [%have p_eq_n := p = n
+       by ([%use Mod.Theorems.div_mod n p]
+           @> [%use Mod.Theorems.div_mod p n]
+           @> nonlin ())]
+  (* p = n then d = q from p*d = n*q. *)
+  @> nonlin ()]
+
+(* Coprime cancellation: gcd(p, q) = 1 && p | n*q => p | n. *)
+(* gcd of a product is 1 when each factor is coprime to the modulus.
+
+   Proof: Let d = gcd(a*b, k).  Then d | a*b and d | k.  Since gcd(a, k) = 1
+   and d | k, we have gcd(d, a) = 1.  Then d | a*b with gcd(d, a) = 1 gives
+   d | b (coprime_cancel).  So d | b and d | k, hence d | gcd(b, k) = 1. *)
+
+lemma gcd_prod_coprime a b k =
+  a > 0 && b > 0 && k > 0
+  && Gcd.gcd a k = 1
+  && Gcd.gcd b k = 1
+  ==> Gcd.gcd (a * b) k = 1
+[@@by intros
+  @> [%have d_pos := Gcd.gcd (a * b) k >= 1
+       by ([%use Gcd.gcd_pos_from_nonneg_not_both_zero (a * b) k]
+           @> nonlin ())]
+  @> [%have d_div_ab := (a * b) mod (Gcd.gcd (a * b) k) = 0
+       by ([%use Gcd.gcd_dvd_left_pos (a * b) k] @> arith)]
+  @> [%have d_div_k := k mod (Gcd.gcd (a * b) k) = 0
+       by ([%use Gcd.gcd_dvd_right_pos (a * b) k] @> arith)]
+  (* gcd(d, a) | gcd(k, a) = gcd(a, k) = 1, so gcd(d, a) = 1. *)
+  @> [%have gcd_da_pos := Gcd.gcd (Gcd.gcd (a * b) k) a >= 1
+       by ([%use Gcd.gcd_pos_from_nonneg_not_both_zero (Gcd.gcd (a * b) k) a]
+           @> nonlin ())]
+  @> [%have gcd_da_div_d := (Gcd.gcd (a * b) k) mod
+       (Gcd.gcd (Gcd.gcd (a * b) k) a) = 0
+       by ([%use Gcd.gcd_dvd_left_pos (Gcd.gcd (a * b) k) a] @> arith)]
+  @> [%have gcd_da_div_a := a mod (Gcd.gcd (Gcd.gcd (a * b) k) a) = 0
+       by ([%use Gcd.gcd_dvd_right_pos (Gcd.gcd (a * b) k) a] @> arith)]
+  @> [%have gcd_da_div_k := k mod (Gcd.gcd (Gcd.gcd (a * b) k) a) = 0
+       by ([%use divides_trans (Gcd.gcd (Gcd.gcd (a * b) k) a)
+             (Gcd.gcd (a * b) k) k] @> auto)]
+  @> [%have gcd_da_div_gcd_ak := (Gcd.gcd a k) mod
+       (Gcd.gcd (Gcd.gcd (a * b) k) a) = 0
+       by ([%use Gcd.gcd_absorbs_common_divisor
+             (Gcd.gcd (Gcd.gcd (a * b) k) a) a k] @> arith)]
+  @> [%have gcd_da_eq_1 := Gcd.gcd (Gcd.gcd (a * b) k) a = 1
+       by ([%use Gcd.mod_small 1 (Gcd.gcd (Gcd.gcd (a * b) k) a)] @> auto)]
+  (* d | a*b with gcd(d, a) = 1 => d | b. *)
+  @> [%have d_div_b := b mod (Gcd.gcd (a * b) k) = 0
+       by ([%use coprime_cancel (Gcd.gcd (a * b) k) a b]
+           @> [%have eq := (b * a) mod (Gcd.gcd (a * b) k) = 0 by (nonlin ())]
+           @> auto)]
+  (* d | b and d | k => d | gcd(b, k) = 1. *)
+  @> [%have d_div_gcd_bk := (Gcd.gcd b k) mod (Gcd.gcd (a * b) k) = 0
+       by ([%use Gcd.gcd_absorbs_common_divisor (Gcd.gcd (a * b) k) b k]
+           @> arith)]
+  @> [%use Gcd.mod_small 1 (Gcd.gcd (a * b) k)]
+  @> auto]
+
+(* gcd(2, m² - n²) = 1 since m²-n² is odd. *)
+
+lemma gcd_2_msq_minus_nsq_helper m_n_sq =
+  m_n_sq > 0 && m_n_sq mod 2 = 1
+  ==> Gcd.gcd 2 m_n_sq = 1
+[@@by intros
+  @> [%have d_pos := Gcd.gcd 2 m_n_sq >= 1
+       by ([%use Gcd.gcd_pos_from_nonneg_not_both_zero 2 m_n_sq]
+           @> [%use Mod.Theorems.mod_range m_n_sq 2]
+           @> [%expand Mod.abs 2] @> auto)]
+  @> [%have d_div_2 := 2 mod (Gcd.gcd 2 m_n_sq) = 0
+       by ([%use Gcd.gcd_dvd_left_pos 2 m_n_sq] @> arith)]
+  @> [%have d_div_msq := m_n_sq mod (Gcd.gcd 2 m_n_sq) = 0
+       by ([%use Gcd.gcd_dvd_right_pos 2 m_n_sq] @> arith)]
+  (* d | 2, so d in {1, 2}.  If d = 2, then 2 | m_n_sq, but m_n_sq odd. *)
+  @> [%cases (Gcd.gcd 2 m_n_sq = 1)]
+  @>| [auto;
+       intros
+       @> [%have d_ge_2 := Gcd.gcd 2 m_n_sq >= 2 by arith]
+       @> [%use Mod.Theorems.div_mod 2 (Gcd.gcd 2 m_n_sq)]
+       @> [%use Mod.Theorems.mod_range 2 (Gcd.gcd 2 m_n_sq)]
+       @> [%expand Mod.abs (Gcd.gcd 2 m_n_sq)]
+       @> generalize (quote_term (Gcd.gcd 2 m_n_sq)) "g"
+       @> nonlin ()]]
+
+(* gcd(2mn, m²-n²) = 1 for primitive triples with a odd.
+
+   We combine three coprimalities via gcd_prod_coprime:
+   - gcd(2, m²-n²) = 1   (m²-n² is odd)
+   - gcd(m, m²-n²) = 1   (gcd_m_msq_minus_nsq, from gcd(m, n) = 1)
+   - gcd(n, m²-n²) = 1   (gcd_n_msq_minus_nsq, from gcd(m, n) = 1)
+   First combine to get gcd(mn, m²-n²) = 1, then combine with the 2 to get
+   gcd(2mn, m²-n²) = 1. *)
+
+lemma gcd_2mn_msq_minus_nsq a b c =
+  a > 0 && b > 0 && c > 0
+  && Gcd.gcd a b = 1
+  && a mod 2 = 1
+  && a * a + b * b = c * c
+  ==> Gcd.gcd (2 * param_m a b c * param_n a b c)
+              (param_m a b c * param_m a b c
+               - param_n a b c * param_n a b c)
+      = 1
+[@@by intros
+  @> [%use gcd_m_n a b c]
+  @> [%use param_m_gt_n a b c]
+  @> [%use param_m_pos a b c]
+  @> [%use param_n_pos a b c]
+  @> [%use m_sq_minus_n_sq_odd a b c]
+  @> [%have m_sq_minus_n_sq_pos := param_m a b c * param_m a b c
+                                   - param_n a b c * param_n a b c > 0
+       by (nonlin ())]
+  @> [%use gcd_m_msq_minus_nsq (param_m a b c) (param_n a b c)]
+  @> [%use gcd_n_msq_minus_nsq (param_m a b c) (param_n a b c)]
+  @> [%use gcd_2_msq_minus_nsq_helper (param_m a b c * param_m a b c
+                                       - param_n a b c * param_n a b c)]
+  (* Combine m and n: gcd(mn, m²-n²) = 1. *)
+  @> [%use gcd_prod_coprime (param_m a b c) (param_n a b c)
+       (param_m a b c * param_m a b c - param_n a b c * param_n a b c)]
+  (* Combine with 2: gcd(2 * (mn), m²-n²) = 1. *)
+  @> [%use gcd_prod_coprime 2 (param_m a b c * param_n a b c)
+       (param_m a b c * param_m a b c - param_n a b c * param_n a b c)]
+  @> [%have rew := 2 * (param_m a b c * param_n a b c)
+                  = 2 * param_m a b c * param_n a b c
+       by (nonlin ())]
+  @> auto]
+
+(* A nice little helper. *)
+
+lemma m_plus_n_odd_helper a b c =
+  a > 0 && b > 0 && c > 0
+  && Gcd.gcd a b = 1
+  && a mod 2 = 1
+  && a * a + b * b = c * c
+  ==> (param_m a b c + param_n a b c) mod 2 = 1
+[@@by intros
+  @> [%use not_both_m_n_odd a b c]
+  @> [%use gcd_m_n a b c]
+  @> [%use Mod.Theorems.mod_range (param_m a b c) 2]
+  @> [%use Mod.Theorems.mod_range (param_n a b c) 2]
+  @> [%use Mod.Theorems.mod_range (param_m a b c + param_n a b c) 2]
+  @> [%expand Mod.abs 2]
+  @> [%have not_both_even := not (param_m a b c mod 2 = 0
+                                  && param_n a b c mod 2 = 0)
+       by ([%use Gcd.gcd_absorbs_common_divisor 2
+             (param_m a b c) (param_n a b c)]
+           @> [%use Gcd.mod_small 1 2]
+           @> auto)]
+  @> [%use Mod.Theorems.div_mod (param_m a b c) 2]
+  @> [%use Mod.Theorems.div_mod (param_n a b c) 2]
+  @> generalize (quote_term (param_m a b c / 2)) "mh"
+  @> generalize (quote_term (param_n a b c / 2)) "nh"
+  @> generalize (quote_term ((param_m a b c + param_n a b c) / 2)) "sh"
+  @> nonlin ()]
+
+(* a = m²-n², b = 2mn, c = m²+n² (the key lemma for odd-a case).
+
+   Proof:
+   - From a_b_val: 2 * a * m * n = b * (m² - n²), i.e., a * (2mn) = b * (m² - n²).
+   - gcd(a, b) = 1 (hypothesis) and gcd(m² - n², 2mn) = 1 (gcd_2mn_msq_minus_nsq).
+   - All positive: a, b > 0 (hyp), 2mn > 0 (m, n > 0), m² - n² > 0 (m > n).
+   - By lowest_terms_unique: a = m² - n² and b = 2mn.
+   - For c: from c_b_val, 2 * c * m * n = b * (m² + n²).  Substitute b = 2mn:
+     2 * c * m * n = 2mn * (m² + n²).  With 2mn > 0, divide to get c = m² + n². *)
+
+theorem a_b_c_vals a b c =
+  a > 0 && b > 0 && c > 0
+  && Gcd.gcd a b = 1
+  && a mod 2 = 1
+  && a * a + b * b = c * c
+  ==>
+  a = param_m a b c * param_m a b c - param_n a b c * param_n a b c
+  && b = 2 * param_m a b c * param_n a b c
+  && c = param_m a b c * param_m a b c + param_n a b c * param_n a b c
+[@@by intros
+  @> [%use a_b_val a b c]
+  @> [%use c_b_val a b c]
+  @> [%use gcd_m_n a b c]
+  @> [%use gcd_2mn_msq_minus_nsq a b c]
+  @> [%use param_m_gt_n a b c]
+  @> [%use param_m_pos a b c]
+  @> [%use param_n_pos a b c]
+  @> [%have m_sq_minus_n_sq_pos := param_m a b c * param_m a b c
+                                   - param_n a b c * param_n a b c > 0
+       by (nonlin ())]
+  @> [%have two_mn_pos := 2 * param_m a b c * param_n a b c > 0
+       by (nonlin ())]
+  @> [%have a_2mn_eq := a * (2 * param_m a b c * param_n a b c)
+                       = b * (param_m a b c * param_m a b c
+                              - param_n a b c * param_n a b c)
+       by (nonlin ())]
+  @> [%have gcd_swap := Gcd.gcd
+       (param_m a b c * param_m a b c - param_n a b c * param_n a b c)
+       (2 * param_m a b c * param_n a b c) = 1
+       by ([%use Gcd.gcd_comm (2 * param_m a b c * param_n a b c)
+             (param_m a b c * param_m a b c - param_n a b c * param_n a b c)]
+           @> auto)]
+  (* Apply lowest_terms_unique to get a = m² - n², b = 2mn. *)
+  @> [%use lowest_terms_unique a b
+       (param_m a b c * param_m a b c - param_n a b c * param_n a b c)
+       (2 * param_m a b c * param_n a b c)]
+  @> generalize (quote_term (param_m a b c)) "m"
+  @> generalize (quote_term (param_n a b c)) "n"
+  @>>| nonlin ()]
+
+(* ============================================================
+   MAIN THEOREM (backward direction):
+   Every primitive Pythagorean triple is given by Euclid's formula
+   (modulo swapping a, b).
+   ============================================================ *)
+
+theorem pythagorean_triples_necessity a b c =
+  a > 0 && b > 0 && c > 0
+  && Gcd.gcd a b = 1
+  && a * a + b * b = c * c
+  ==>
+  let m = pyth_trip_gen_m a b c in
+  let n = pyth_trip_gen_n a b c in
+  m > n && n > 0
+  && Gcd.gcd m n = 1
+  && (m + n) mod 2 = 1
+  && (if a mod 2 = 1
+      then a = m * m - n * n && b = 2 * m * n && c = m * m + n * n
+      else b = m * m - n * n && a = 2 * m * n && c = m * m + n * n)
+[@@by intros
+  @> [%use a_or_b_odd a b]
+  @> [%cases (a mod 2 = 1)]
+  @>| [(* a odd case *)
+       intros
+       @> [%use a_b_c_vals a b c]
+       @> [%use gcd_m_n a b c]
+       @> [%use param_m_gt_n a b c]
+       @> [%use param_n_pos a b c]
+       @> [%use m_plus_n_odd_helper a b c]
+       @> [%simp_only pyth_trip_gen_m, pyth_trip_gen_n]
+       @>>| auto;
+       (* a even, b odd *)
+       intros
+       @> [%have b_odd := b mod 2 = 1
+            by ([%use Mod.Theorems.mod_range a 2]
+                @> [%expand Mod.abs 2] @> auto)]
+       @> [%have gcd_ba := Gcd.gcd b a = 1
+            by ([%use Gcd.gcd_comm a b] @> auto)]
+       @> [%have b_a_eq := b * b + a * a = c * c by (nonlin ())]
+       @> [%use a_b_c_vals b a c]
+       @> [%use gcd_m_n b a c]
+       @> [%use param_m_gt_n b a c]
+       @> [%use param_n_pos b a c]
+       @> [%use m_plus_n_odd_helper b a c]
+       @> [%simp_only pyth_trip_gen_m, pyth_trip_gen_n]
+       @>>| auto]]
+
