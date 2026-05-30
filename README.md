@@ -4,7 +4,7 @@ This is a project by [Grant Passmore](https://www.cl.cam.ac.uk/~gp351) to prove 
 
 # Status
 
-Currently, we have proven **32/100**:
+Currently, we have proven **33/100**:
 
 1\. [Irrationality of √2](#thm-1)  
 3\. [Denumerability of the Rationals](#thm-3)  
@@ -13,6 +13,7 @@ Currently, we have proven **32/100**:
 11\. [Infinitude of Primes](#thm-11)  
 19\. [Lagrange's Four-Square Theorem](#thm-19)  
 20\. [Fermat's Two-Square Theorem](#thm-20)  
+23\. [Formula for Pythagorean Triples](#thm-23)  
 30\. [The Ballot Problem](#thm-30)  
 34\. [Divergence of the Harmonic Series](#thm-34)  
 38\. [Arithmetic Mean/Geometric Mean](#thm-38)  
@@ -197,6 +198,57 @@ theorem two_squares_theorem p =
   ==>
   let w = prime_witness p in
   p = (w.a * w.a) + (w.b * w.b)
+```
+</details>
+
+[Back to list](#status)
+
+
+<a id="thm-23"></a>
+## 23. Formula for Pythagorean Triples
+
+[Source: src/pythagorean_triples.iml](src/pythagorean_triples.iml)
+
+*Statement (informal):*
+Euclid's formula characterizes all primitive Pythagorean triples.
+
+**Forward direction:** for positive integers $m > n$ with $\gcd(m, n) = 1$ and $m + n$ odd, the triple
+
+$$(a, b, c) = (m^2 - n^2,\ 2mn,\ m^2 + n^2)$$
+
+is a primitive Pythagorean triple: $a^2 + b^2 = c^2$ and $\gcd(a, c) = 1$.
+
+**Backward direction:** every primitive Pythagorean triple $(a, b, c)$ has this form (possibly after swapping $a$ and $b$).  When $a$ is odd, the generators are $m = (a + c) / \gcd(a + c, b)$ and $n = b / \gcd(a + c, b)$.
+
+The backward direction relies on a *lowest-terms-uniqueness* lemma: if $p/q = n/d$ as fractions and both are in lowest terms (with positive integers), then $p = n$ and $q = d$.
+
+<details open>
+<summary><strong>Imandra statement</strong></summary>
+
+```ocaml
+theorem pythagorean_triples_forward m n =
+  m > n && n > 0 && Gcd.gcd m n = 1 && (m + n) mod 2 = 1
+  ==>
+  let a = euclid_a m n in
+  let b = euclid_b m n in
+  let c = euclid_c m n in
+  a * a + b * b = c * c
+  && a > 0 && b > 0 && c > 0
+  && Gcd.gcd a c = 1
+
+theorem pythagorean_triples_necessity a b c =
+  a > 0 && b > 0 && c > 0
+  && Gcd.gcd a b = 1
+  && a * a + b * b = c * c
+  ==>
+  let m = pyth_trip_gen_m a b c in
+  let n = pyth_trip_gen_n a b c in
+  m > n && n > 0
+  && Gcd.gcd m n = 1
+  && (m + n) mod 2 = 1
+  && (if a mod 2 = 1
+      then a = m * m - n * n && b = 2 * m * n && c = m * m + n * n
+      else b = m * m - n * n && a = 2 * m * n && c = m * m + n * n)
 ```
 </details>
 
